@@ -1,9 +1,6 @@
 package com.zerosum.zerosum.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.Instant;
 
@@ -17,9 +14,6 @@ import java.time.Instant;
         )
     }
 )
-@Getter
-@Setter
-@NoArgsConstructor
 public class GroupMember {
 
     @Id
@@ -42,5 +36,29 @@ public class GroupMember {
         if (joinedAt == null) {
             joinedAt = Instant.now();
         }
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public Group getGroup() {
+        return group;
+    }
+
+    public void setGroup(Group group) {
+        this.group = group;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
+    public Instant getJoinedAt() {
+        return joinedAt;
     }
 }

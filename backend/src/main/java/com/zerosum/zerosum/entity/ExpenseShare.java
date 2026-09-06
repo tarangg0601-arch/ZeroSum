@@ -1,9 +1,6 @@
 package com.zerosum.zerosum.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 @Entity
 @Table(
@@ -15,9 +12,6 @@ import lombok.Setter;
         )
     }
 )
-@Getter
-@Setter
-@NoArgsConstructor
 public class ExpenseShare {
 
     @Id
@@ -40,4 +34,48 @@ public class ExpenseShare {
 
     @Column(nullable = false)
     private boolean participated = true;
+
+    public Long getId() {
+        return id;
+    }
+
+    public Expense getExpense() {
+        return expense;
+    }
+
+    public void setExpense(Expense expense) {
+        this.expense = expense;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
+    public Long getShareAmountPaise() {
+        return shareAmountPaise;
+    }
+
+    public void setShareAmountPaise(Long shareAmountPaise) {
+        this.shareAmountPaise = shareAmountPaise;
+    }
+
+    public String getShareType() {
+        return shareType;
+    }
+
+    public void setShareType(String shareType) {
+        this.shareType = shareType;
+    }
+
+    public boolean isParticipated() {
+        return participated;
+    }
+
+    public void setParticipated(boolean participated) {
+        this.participated = participated;
+    }
 }

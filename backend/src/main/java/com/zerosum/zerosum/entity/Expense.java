@@ -1,18 +1,12 @@
 package com.zerosum.zerosum.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.Instant;
 import java.time.LocalDate;
 
 @Entity
 @Table(name = "expenses")
-@Getter
-@Setter
-@NoArgsConstructor
 public class Expense {
 
     @Id
@@ -50,5 +44,69 @@ public class Expense {
         if (createdAt == null) {
             createdAt = Instant.now();
         }
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public Group getGroup() {
+        return group;
+    }
+
+    public void setGroup(Group group) {
+        this.group = group;
+    }
+
+    public User getPaidBy() {
+        return paidBy;
+    }
+
+    public void setPaidBy(User paidBy) {
+        this.paidBy = paidBy;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public Long getAmountPaise() {
+        return amountPaise;
+    }
+
+    public void setAmountPaise(Long amountPaise) {
+        this.amountPaise = amountPaise;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
+    }
+
+    public LocalDate getExpenseDate() {
+        return expenseDate;
+    }
+
+    public void setExpenseDate(LocalDate expenseDate) {
+        this.expenseDate = expenseDate;
+    }
+
+    public boolean isRecurring() {
+        return recurring;
+    }
+
+    public void setRecurring(boolean recurring) {
+        this.recurring = recurring;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
     }
 }
