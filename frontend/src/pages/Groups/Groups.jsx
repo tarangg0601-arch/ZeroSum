@@ -6,58 +6,36 @@ import {
   Users,
   WalletCards,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import GroupCard from '../../components/common/GroupCard'
-
-const groups = [
-  {
-    id: 1,
-    name: 'Bali trip',
-    type: 'Travel',
-    members: 5,
-    balance: '+₹210',
-    status: 'You are owed',
-    icon: MapPin,
-  },
-  {
-    id: 2,
-    name: 'Hostel 4B',
-    type: 'Home',
-    members: 4,
-    balance: '-₹60',
-    status: 'You owe',
-    icon: Home,
-  },
-  {
-    id: 3,
-    name: 'Friday poker',
-    type: 'Friends',
-    members: 6,
-    balance: '₹0',
-    status: 'Settled',
-    icon: Users,
-  },
-  {
-    id: 4,
-    name: 'Goa weekend',
-    type: 'Travel',
-    members: 7,
-    balance: '+₹480',
-    status: 'You are owed',
-    icon: MapPin,
-  },
-  {
-    id: 5,
-    name: 'College project',
-    type: 'Friends',
-    members: 5,
-    balance: '-₹125',
-    status: 'You owe',
-    icon: Users,
-  },
-]
+import { getGroups } from '../../api/groupsApi'
 
 function Groups() {
+  const [groups, setGroups] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function loadGroups() {
+      try {
+        setLoading(true)
+        setError('')
+
+        const data = await getGroups()
+
+        setGroups(data)
+      } catch (err) {
+        console.error(err)
+        setError('Unable to load groups.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadGroups()
+  }, [])
+
   return (
     <div className="mx-auto max-w-[1400px]">
 
@@ -101,7 +79,7 @@ function Groups() {
               </p>
 
               <p className="text-xl font-semibold text-slate-900">
-                5
+                {groups.length}
               </p>
             </div>
 
@@ -121,7 +99,7 @@ function Groups() {
               </p>
 
               <p className="text-xl font-semibold text-slate-900">
-                4
+                {groups.length}
               </p>
             </div>
 
@@ -141,7 +119,7 @@ function Groups() {
               </p>
 
               <p className="text-xl font-semibold text-emerald-600">
-                +₹505
+                ₹0
               </p>
             </div>
 
@@ -150,53 +128,115 @@ function Groups() {
 
       </section>
 
-      {/* Groups */}
-      <section>
+      {/* Loading */}
+      {loading && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+          <p className="text-sm text-slate-500">
+            Loading your groups...
+          </p>
+        </div>
+      )}
 
-        <div className="mb-4 flex items-center justify-between">
-
-          <h2 className="text-lg font-semibold text-slate-900">
-            All groups
-          </h2>
-
-          <p className="text-sm text-slate-400">
-            5 groups
+      {/* Error */}
+      {!loading && error && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center">
+          <p className="text-sm font-medium text-rose-600">
+            {error}
           </p>
 
+          <p className="mt-1 text-xs text-rose-400">
+            Make sure the Spring Boot backend is running on port 8080.
+          </p>
         </div>
+      )}
 
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      {/* Groups */}
+      {!loading && !error && (
+        <section>
 
-          {groups.map((group) => (
-            <GroupCard
-              key={group.id}
-              {...group}
-            />
-          ))}
+          <div className="mb-4 flex items-center justify-between">
 
-          {/* Create group card */}
-          <button className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/50 p-5 text-center transition hover:border-emerald-400 hover:bg-emerald-50/30">
+            <h2 className="text-lg font-semibold text-slate-900">
+              All groups
+            </h2>
 
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-              <Plus size={21} />
-            </div>
-
-            <h3 className="mt-4 font-semibold text-slate-800">
-              Create a new group
-            </h3>
-
-            <p className="mt-1 max-w-[220px] text-xs leading-5 text-slate-400">
-              Start tracking expenses with friends, roommates or your next trip.
+            <p className="text-sm text-slate-400">
+              {groups.length} {groups.length === 1 ? 'group' : 'groups'}
             </p>
 
-          </button>
+          </div>
 
-        </div>
+          {groups.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white/50 p-12 text-center">
 
-      </section>
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <Users size={21} />
+              </div>
+
+              <h3 className="mt-4 font-semibold text-slate-800">
+                No groups yet
+              </h3>
+
+              <p className="mt-1 text-sm text-slate-400">
+                Create your first group to start tracking shared expenses.
+              </p>
+
+            </div>
+          ) : (
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+
+              {groups.map((group) => (
+                <GroupCard
+                  key={group.id}
+                  id={group.id}
+                  name={group.name}
+                  type={group.groupType}
+                  members={group.members.length}
+                  balance="₹0"
+                  status="No balance calculated"
+                  icon={getGroupIcon(group.groupType)}
+                />
+              ))}
+
+              {/* Create group card */}
+              <button className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/50 p-5 text-center transition hover:border-emerald-400 hover:bg-emerald-50/30">
+
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                  <Plus size={21} />
+                </div>
+
+                <h3 className="mt-4 font-semibold text-slate-800">
+                  Create a new group
+                </h3>
+
+                <p className="mt-1 max-w-[220px] text-xs leading-5 text-slate-400">
+                  Start tracking expenses with friends, roommates or your next trip.
+                </p>
+
+              </button>
+
+            </div>
+          )}
+
+        </section>
+      )}
 
     </div>
   )
+}
+
+function getGroupIcon(groupType) {
+  const type = groupType?.toLowerCase()
+
+  if (type === 'travel') {
+    return MapPin
+  }
+
+  if (type === 'home') {
+    return Home
+  }
+
+  return Users
 }
 
 export default Groups

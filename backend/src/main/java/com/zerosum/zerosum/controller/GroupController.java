@@ -22,6 +22,7 @@ public class GroupController {
         this.groupService = groupService;
     }
 
+    // Create group
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public GroupResponse createGroup(
@@ -30,6 +31,13 @@ public class GroupController {
         return groupService.createGroup(request);
     }
 
+    // Get all groups
+    @GetMapping
+    public List<GroupResponse> getAllGroups() {
+        return groupService.getAllGroups();
+    }
+
+    // Get one group
     @GetMapping("/{groupId}")
     public GroupResponse getGroup(
             @PathVariable Long groupId
@@ -37,6 +45,7 @@ public class GroupController {
         return groupService.getGroup(groupId);
     }
 
+    // Update group
     @PutMapping("/{groupId}")
     public GroupResponse updateGroup(
             @PathVariable Long groupId,
@@ -45,6 +54,7 @@ public class GroupController {
         return groupService.updateGroup(groupId, request);
     }
 
+    // Delete group
     @DeleteMapping("/{groupId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteGroup(
@@ -53,6 +63,7 @@ public class GroupController {
         groupService.deleteGroup(groupId);
     }
 
+    // Add member
     @PostMapping("/{groupId}/members")
     @ResponseStatus(HttpStatus.CREATED)
     public GroupMemberResponse addMember(
@@ -62,6 +73,7 @@ public class GroupController {
         return groupService.addMember(groupId, request);
     }
 
+    // Get group members
     @GetMapping("/{groupId}/members")
     public List<GroupMemberResponse> getMembers(
             @PathVariable Long groupId

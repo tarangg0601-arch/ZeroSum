@@ -44,6 +44,7 @@ public class GroupService {
                 );
 
         Group group = new Group();
+
         group.setName(request.name());
         group.setGroupType(request.groupType());
         group.setJoinCode(generateJoinCode());
@@ -57,6 +58,15 @@ public class GroupService {
         );
 
         return getGroup(savedGroup.getId());
+    }
+
+    @Transactional(readOnly = true)
+    public List<GroupResponse> getAllGroups() {
+
+        return groupRepository.findAll()
+                .stream()
+                .map(group -> getGroup(group.getId()))
+                .toList();
     }
 
     @Transactional
@@ -119,6 +129,7 @@ public class GroupService {
         }
 
         GroupMember groupMember = new GroupMember();
+
         groupMember.setGroup(group);
         groupMember.setUser(user);
 

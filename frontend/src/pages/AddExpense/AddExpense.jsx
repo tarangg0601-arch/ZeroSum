@@ -11,36 +11,20 @@ import {
   Plane,
   MoreHorizontal,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
-import { useMemo, useState } from 'react'
 
-const members = [
-  {
-    id: 1,
-    name: 'Tarang',
-    initials: 'TG',
-  },
-  {
-    id: 2,
-    name: 'Priya',
-    initials: 'PR',
-  },
-  {
-    id: 3,
-    name: 'Dev',
-    initials: 'DV',
-  },
-  {
-    id: 4,
-    name: 'Aria',
-    initials: 'AR',
-  },
-  {
-    id: 5,
-    name: 'Karan',
-    initials: 'KA',
-  },
-]
+import {
+  Link,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom'
+
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
+
+const API_BASE_URL = 'http://localhost:8080/api'
 
 const categories = [
   {
@@ -70,14 +54,74 @@ const categories = [
 ]
 
 function AddExpense() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+
+  const groupId = searchParams.get('groupId')
+
+  const [group, setGroup] = useState(null)
+  const [members, setMembers] = useState([])
+
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
-  const [paidBy, setPaidBy] = useState(1)
+  const [paidBy, setPaidBy] = useState('')
   const [category, setCategory] = useState('Food')
-  const [date, setDate] = useState('2026-09-14')
-  const [selectedMembers, setSelectedMembers] = useState(
-    members.map((member) => member.id),
+  const [date, setDate] = useState(
+    new Date().toISOString().split('T')[0],
   )
+
+  const [selectedMembers, setSelectedMembers] = useState([])
+
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  useEffect(() => {
+    async function loadGroup() {
+      if (!groupId) {
+        setError('No group selected. Open Add Expense from a group.')
+        setLoading(false)
+        return
+      }
+
+      try {
+        setLoading(true)
+        setError('')
+
+        const response = await fetch(
+          `${API_BASE_URL}/groups/${groupId}`,
+        )
+
+        if (!response.ok) {
+          throw new Error('Failed to load group')
+        }
+
+        const data = await response.json()
+
+        setGroup(data)
+
+        const groupMembers = data.members || []
+
+        setMembers(groupMembers)
+
+        if (groupMembers.length > 0) {
+          setPaidBy(groupMembers[0].userId)
+
+          setSelectedMembers(
+            groupMembers.map((member) => member.userId),
+          )
+        }
+      } catch (err) {
+        console.error(err)
+        setError('Unable to load group details.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadGroup()
+  }, [groupId])
 
   const numericAmount = Number(amount) || 0
 
@@ -100,42 +144,169 @@ function AddExpense() {
   }
 
   function selectAllMembers() {
-    setSelectedMembers(members.map((member) => member.id))
+    setSelectedMembers(
+      members.map((member) => member.userId),
+    )
   }
 
   function clearMembers() {
     setSelectedMembers([])
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
 
-    console.log({
-      description,
-      amount: numericAmount,
-      paidBy,
-      category,
-      date,
-      selectedMembers,
-    })
+    if (!groupId) {
+      setError('No group selected.')
+      return
+    }
+
+    if (!description.trim()) {
+      setError('Please enter an expense description.')
+      return
+    }
+
+    if (numericAmount <= 0) {
+      setError('Please enter a valid expense amount.')
+      return
+    }
+
+    if (!paidBy) {
+      setError('Please select who paid for the expense.')
+      return
+    }
+
+    if (selectedMembers.length === 0) {
+      setError('Select at least one participant.')
+      return
+    }
+
+    try {
+      setSubmitting(true)
+      setError('')
+      setSuccess('')
+
+      const amountPaise = Math.round(numericAmount * 100)
+
+      const payload = {
+        description: description.trim(),
+        amountPaise,
+        category,
+        expenseDate: date,
+        paidBy: Number(paidBy),
+        participantIds: selectedMembers.map(Number),
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/groups/${groupId}/expenses`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        },
+      )
+
+      if (!response.ok) {
+        let message = 'Failed to add expense.'
+
+        try {
+          const errorData = await response.json()
+
+          if (errorData?.message) {
+            message = errorData.message
+          }
+        } catch {
+          // Keep default error message.
+        }
+
+        throw new Error(message)
+      }
+
+      await response.json()
+
+      setSuccess('Expense added successfully.')
+
+      setTimeout(() => {
+        navigate(`/groups/${groupId}`)
+      }, 500)
+    } catch (err) {
+      console.error(err)
+      setError(err.message || 'Unable to add expense.')
+    } finally {
+      setSubmitting(false)
+    }
   }
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-[1100px]">
+        <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+          <p className="text-sm text-slate-500">
+            Loading group details...
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error && !group) {
+    return (
+      <div className="mx-auto max-w-[1100px]">
+
+        <Link
+          to="/groups"
+          className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-emerald-600"
+        >
+          <ArrowLeft size={17} />
+          Back to groups
+        </Link>
+
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-10 text-center">
+          <p className="font-semibold text-rose-600">
+            {error}
+          </p>
+
+          <p className="mt-2 text-sm text-rose-400">
+            Open this page from a specific group before adding an expense.
+          </p>
+        </div>
+
+      </div>
+    )
+  }
+
+  const groupType = group?.groupType
+    ? group.groupType.charAt(0).toUpperCase() +
+      group.groupType.slice(1)
+    : 'Group'
+
+  const paidByMember = members.find(
+    (member) => member.userId === Number(paidBy),
+  )
 
   return (
     <div className="mx-auto max-w-[1100px]">
 
       {/* Back */}
+
       <Link
-        to="/groups/1"
+        to={`/groups/${groupId}`}
         className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-emerald-600"
       >
         <ArrowLeft size={17} />
-        Back to Bali trip
+
+        Back to {group?.name}
       </Link>
 
+
       {/* Page heading */}
+
       <section className="mb-8">
+
         <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">
-          Bali trip
+          {groupType}
         </p>
 
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
@@ -143,26 +314,49 @@ function AddExpense() {
         </h1>
 
         <p className="mt-2 text-sm text-slate-500">
-          Record a shared expense and let ZeroSum calculate everyone&apos;s share.
+          Record a shared expense and let ZeroSum calculate everyone's share.
         </p>
+
       </section>
+
+
+      {/* Error / success messages */}
+
+      {error && (
+        <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-600">
+          {success}
+        </div>
+      )}
+
 
       <form onSubmit={handleSubmit}>
 
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
 
+
           {/* Main form */}
+
           <div className="space-y-6">
 
+
             {/* Basic information */}
+
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
               <div className="mb-6 flex items-center gap-3">
+
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
                   <Receipt size={19} />
                 </div>
 
                 <div>
+
                   <h2 className="font-semibold text-slate-900">
                     Expense details
                   </h2>
@@ -170,13 +364,19 @@ function AddExpense() {
                   <p className="text-xs text-slate-400">
                     Tell us what the expense was for.
                   </p>
+
                 </div>
+
               </div>
+
 
               <div className="space-y-5">
 
+
                 {/* Description */}
+
                 <div>
+
                   <label className="mb-2 block text-sm font-medium text-slate-700">
                     Description
                   </label>
@@ -184,21 +384,29 @@ function AddExpense() {
                   <input
                     type="text"
                     value={description}
-                    onChange={(event) => setDescription(event.target.value)}
+                    onChange={(event) =>
+                      setDescription(event.target.value)
+                    }
                     placeholder="e.g. Dinner at the beach"
                     className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/5"
                   />
+
                 </div>
 
+
                 {/* Amount + date */}
+
                 <div className="grid gap-5 sm:grid-cols-2">
 
+
                   <div>
+
                     <label className="mb-2 block text-sm font-medium text-slate-700">
                       Amount
                     </label>
 
                     <div className="relative">
+
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">
                         ₹
                       </span>
@@ -208,19 +416,26 @@ function AddExpense() {
                         min="0"
                         step="0.01"
                         value={amount}
-                        onChange={(event) => setAmount(event.target.value)}
+                        onChange={(event) =>
+                          setAmount(event.target.value)
+                        }
                         placeholder="0.00"
                         className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/5"
                       />
+
                     </div>
+
                   </div>
 
+
                   <div>
+
                     <label className="mb-2 block text-sm font-medium text-slate-700">
                       Date
                     </label>
 
                     <div className="relative">
+
                       <CalendarDays
                         size={17}
                         className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
@@ -229,48 +444,68 @@ function AddExpense() {
                       <input
                         type="date"
                         value={date}
-                        onChange={(event) => setDate(event.target.value)}
+                        onChange={(event) =>
+                          setDate(event.target.value)
+                        }
                         className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-700 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/5"
                       />
+
                     </div>
+
                   </div>
 
                 </div>
 
+
                 {/* Paid by */}
+
                 <div>
+
                   <label className="mb-2 block text-sm font-medium text-slate-700">
                     Paid by
                   </label>
 
                   <div className="relative">
+
                     <select
                       value={paidBy}
-                      onChange={(event) => setPaidBy(Number(event.target.value))}
+                      onChange={(event) =>
+                        setPaidBy(Number(event.target.value))
+                      }
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/5"
                     >
+
                       {members.map((member) => (
-                        <option key={member.id} value={member.id}>
+                        <option
+                          key={member.userId}
+                          value={member.userId}
+                        >
                           {member.name}
                         </option>
                       ))}
+
                     </select>
 
                     <ChevronDown
                       size={17}
                       className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400"
                     />
+
                   </div>
+
                 </div>
 
               </div>
 
             </section>
 
+
             {/* Category */}
+
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
               <div className="mb-5">
+
                 <h2 className="font-semibold text-slate-900">
                   Category
                 </h2>
@@ -278,15 +513,18 @@ function AddExpense() {
                 <p className="mt-1 text-xs text-slate-400">
                   Choose a category for this expense.
                 </p>
+
               </div>
 
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
 
                 {categories.map((item) => {
+
                   const Icon = item.icon
                   const isSelected = category === item.name
 
                   return (
+
                     <button
                       key={item.name}
                       type="button"
@@ -297,12 +535,15 @@ function AddExpense() {
                           : 'border-slate-200 bg-white text-slate-400 hover:border-emerald-200 hover:bg-emerald-50/40'
                       }`}
                     >
+
                       <Icon size={19} />
 
                       <span className="text-xs font-medium">
                         {item.name}
                       </span>
+
                     </button>
+
                   )
                 })}
 
@@ -310,12 +551,15 @@ function AddExpense() {
 
             </section>
 
+
             {/* Split */}
+
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
               <div className="mb-5 flex items-start justify-between gap-4">
 
                 <div>
+
                   <h2 className="font-semibold text-slate-900">
                     Split equally
                   </h2>
@@ -323,9 +567,11 @@ function AddExpense() {
                   <p className="mt-1 text-xs text-slate-400">
                     Select everyone who participated in this expense.
                   </p>
+
                 </div>
 
                 <div className="flex gap-2">
+
                   <button
                     type="button"
                     onClick={selectAllMembers}
@@ -345,20 +591,34 @@ function AddExpense() {
                   >
                     Clear
                   </button>
+
                 </div>
 
               </div>
 
+
               <div className="space-y-2">
 
                 {members.map((member) => {
-                  const selected = selectedMembers.includes(member.id)
+
+                  const selected =
+                    selectedMembers.includes(member.userId)
+
+                  const initials = member.name
+                    .split(' ')
+                    .map((part) => part[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase()
 
                   return (
+
                     <button
-                      key={member.id}
+                      key={member.userId}
                       type="button"
-                      onClick={() => toggleMember(member.id)}
+                      onClick={() =>
+                        toggleMember(member.userId)
+                      }
                       className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
                         selected
                           ? 'border-emerald-200 bg-emerald-50/50'
@@ -367,7 +627,7 @@ function AddExpense() {
                     >
 
                       <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
-                        {member.initials}
+                        {initials}
                       </div>
 
                       <span className="flex-1 text-sm font-medium text-slate-700">
@@ -385,6 +645,7 @@ function AddExpense() {
                       </div>
 
                     </button>
+
                   )
                 })}
 
@@ -394,7 +655,9 @@ function AddExpense() {
 
           </div>
 
+
           {/* Summary */}
+
           <aside className="lg:sticky lg:top-6 lg:self-start">
 
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -406,7 +669,8 @@ function AddExpense() {
                 </p>
 
                 <p className="mt-4 text-3xl font-bold tracking-tight">
-                  ₹{numericAmount.toLocaleString('en-IN', {
+                  ₹
+                  {numericAmount.toLocaleString('en-IN', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
@@ -418,21 +682,26 @@ function AddExpense() {
 
               </div>
 
+
               <div className="p-6">
 
                 <div className="space-y-4">
 
                   <div className="flex items-center justify-between">
+
                     <span className="text-sm text-slate-500">
                       Paid by
                     </span>
 
                     <span className="text-sm font-semibold text-slate-800">
-                      {members.find((member) => member.id === paidBy)?.name}
+                      {paidByMember?.name || '—'}
                     </span>
+
                   </div>
 
+
                   <div className="flex items-center justify-between">
+
                     <span className="text-sm text-slate-500">
                       Category
                     </span>
@@ -440,9 +709,12 @@ function AddExpense() {
                     <span className="text-sm font-semibold text-slate-800">
                       {category}
                     </span>
+
                   </div>
 
+
                   <div className="flex items-center justify-between">
+
                     <span className="text-sm text-slate-500">
                       Participants
                     </span>
@@ -450,11 +722,14 @@ function AddExpense() {
                     <span className="text-sm font-semibold text-slate-800">
                       {selectedMembers.length}
                     </span>
+
                   </div>
 
                 </div>
 
+
                 <div className="my-5 border-t border-slate-100" />
+
 
                 <div className="rounded-xl bg-emerald-50 p-4">
 
@@ -463,7 +738,8 @@ function AddExpense() {
                   </p>
 
                   <p className="mt-1 text-2xl font-bold text-emerald-700">
-                    ₹{splitAmount.toLocaleString('en-IN', {
+                    ₹
+                    {splitAmount.toLocaleString('en-IN', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
@@ -475,13 +751,23 @@ function AddExpense() {
 
                 </div>
 
+
                 <button
                   type="submit"
-                  disabled={!description || numericAmount <= 0 || selectedMembers.length === 0}
+                  disabled={
+                    submitting ||
+                    !description.trim() ||
+                    numericAmount <= 0 ||
+                    selectedMembers.length === 0 ||
+                    !paidBy
+                  }
                   className="mt-5 flex h-11 w-full items-center justify-center rounded-xl bg-emerald-500 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Add expense
+                  {submitting
+                    ? 'Adding expense...'
+                    : 'Add expense'}
                 </button>
+
 
                 <p className="mt-3 text-center text-[11px] leading-5 text-slate-400">
                   ZeroSum will automatically calculate the resulting balances.

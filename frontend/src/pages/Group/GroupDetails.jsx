@@ -1,79 +1,206 @@
 import {
   ArrowLeft,
   ArrowRight,
-  CalendarDays,
   Copy,
   Plus,
   Receipt,
   Users,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
 
-const expenses = [
-  {
-    description: 'Flights',
-    category: 'Travel',
-    amount: '₹320',
-    paidBy: 'Tarang',
-    date: 'Sep 12',
-  },
-  {
-    description: 'Scooter rental',
-    category: 'Transport',
-    amount: '₹180',
-    paidBy: 'Priya',
-    date: 'Sep 12',
-  },
-  {
-    description: 'Dinner',
-    category: 'Food',
-    amount: '₹210',
-    paidBy: 'Tarang',
-    date: 'Sep 13',
-  },
-  {
-    description: 'Groceries',
-    category: 'Food',
-    amount: '₹130',
-    paidBy: 'Dev',
-    date: 'Sep 14',
-  },
-]
+const API_BASE_URL = 'http://localhost:8080/api'
 
-const members = [
-  {
-    name: 'Tarang',
-    initials: 'TG',
-    balance: '+₹210',
-    status: 'You are owed',
-  },
-  {
-    name: 'Priya',
-    initials: 'PR',
-    balance: '-₹45',
-    status: 'You owe',
-  },
-  {
-    name: 'Dev',
-    initials: 'DV',
-    balance: '-₹90',
-    status: 'You owe',
-  },
-  {
-    name: 'Aria',
-    initials: 'AR',
-    balance: '+₹75',
-    status: 'Owed',
-  },
-  {
-    name: 'Karan',
-    initials: 'KA',
-    balance: '-₹150',
-    status: 'You owe',
-  },
-]
+// Temporary current user for MVP.
+// Authentication will replace this later.
+const CURRENT_USER_ID = 2
 
 function GroupDetails() {
+  const { groupId } = useParams()
+
+  const [group, setGroup] = useState(null)
+  const [expenses, setExpenses] = useState([])
+  const [balances, setBalances] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function loadGroupData() {
+      try {
+        setLoading(true)
+        setError('')
+
+        const [groupResponse, expensesResponse, balancesResponse] =
+          await Promise.all([
+            fetch(`${API_BASE_URL}/groups/${groupId}`),
+            fetch(`${API_BASE_URL}/groups/${groupId}/expenses`),
+            fetch(`${API_BASE_URL}/groups/${groupId}/balances`),
+          ])
+
+        if (!groupResponse.ok) {
+          throw new Error('Failed to load group')
+        }
+
+        if (!expensesResponse.ok) {
+          throw new Error('Failed to load expenses')
+        }
+
+        if (!balancesResponse.ok) {
+          throw new Error('Failed to load balances')
+        }
+
+        const [groupData, expenseData, balanceData] =
+          await Promise.all([
+            groupResponse.json(),
+            expensesResponse.json(),
+            balancesResponse.json(),
+          ])
+
+        setGroup(groupData)
+        setExpenses(expenseData)
+        setBalances(balanceData)
+      } catch (err) {
+        console.error(err)
+        setError('Unable to load group details.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadGroupData()
+  }, [groupId])
+
+  const totalExpensesPaise = useMemo(() => {
+    return expenses.reduce(
+      (total, expense) =>
+        total + Number(expense.amountPaise || 0),
+      0,
+    )
+  }, [expenses])
+
+  const currentUserBalance = useMemo(() => {
+    const currentUser = balances.find(
+      (balance) => balance.userId === CURRENT_USER_ID,
+    )
+
+    return currentUser?.balancePaise ?? 0
+  }, [balances])
+
+  const formatRupees = (paise) => {
+    const amount = Number(paise || 0) / 100
+
+    return `₹${amount.toLocaleString('en-IN', {
+      maximumFractionDigits: 2,
+    })}`
+  }
+
+  const formatSignedRupees = (paise) => {
+    const amount = Number(paise || 0)
+
+    if (amount > 0) {
+      return `+${formatRupees(amount)}`
+    }
+
+    if (amount < 0) {
+      return `-${formatRupees(Math.abs(amount))}`
+    }
+
+    return '₹0'
+  }
+
+  const formatDate = (date) => {
+    if (!date) return ''
+
+    const parsedDate = new Date(date)
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return date
+    }
+
+    return parsedDate.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+    })
+  }
+
+  const getInitials = (name) => {
+    if (!name) return '?'
+
+    return name
+      .split(' ')
+      .map((part) => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase()
+  }
+
+  const getBalanceStatus = (memberBalance, memberId) => {
+    if (memberBalance > 0) {
+      return memberId === CURRENT_USER_ID
+        ? 'You are owed'
+        : 'Owed'
+    }
+
+    if (memberBalance < 0) {
+      return memberId === CURRENT_USER_ID
+        ? 'You owe'
+        : 'Owes'
+    }
+
+    return 'Settled'
+  }
+
+  const copyJoinCode = async () => {
+    if (!group?.joinCode) return
+
+    try {
+      await navigator.clipboard.writeText(group.joinCode)
+    } catch (err) {
+      console.error('Unable to copy join code', err)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-[1400px]">
+        <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+          <p className="text-sm text-slate-500">
+            Loading group details...
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !group) {
+    return (
+      <div className="mx-auto max-w-[1400px]">
+        <Link
+          to="/groups"
+          className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-emerald-600"
+        >
+          <ArrowLeft size={17} />
+          Back to groups
+        </Link>
+
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-10 text-center">
+          <p className="font-semibold text-rose-600">
+            {error || 'Group not found.'}
+          </p>
+
+          <p className="mt-2 text-sm text-rose-400">
+            Make sure the Spring Boot backend is running on port 8080.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const groupType = group.groupType
+    ? group.groupType.charAt(0).toUpperCase() +
+      group.groupType.slice(1)
+    : 'Group'
+
   return (
     <div className="mx-auto max-w-[1400px]">
 
@@ -98,17 +225,23 @@ function GroupDetails() {
             </div>
 
             <div>
+
               <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">
-                Travel
+                {groupType}
               </p>
 
               <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
-                Bali trip
+                {group.name}
               </h1>
 
               <p className="mt-1 text-sm text-slate-400">
-                5 members · Active group
+                {group.members.length}{' '}
+                {group.members.length === 1
+                  ? 'member'
+                  : 'members'}{' '}
+                · Active group
               </p>
+
             </div>
 
           </div>
@@ -124,7 +257,7 @@ function GroupDetails() {
             </button>
 
             <Link
-              to="/expenses/new"
+              to={`/expenses/new?groupId=${group.id}`}
               className="flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600"
             >
               <Plus size={17} />
@@ -142,21 +275,21 @@ function GroupDetails() {
 
         <SummaryCard
           label="Total expenses"
-          value="₹840"
+          value={formatRupees(totalExpensesPaise)}
           icon={<Receipt size={19} />}
         />
 
         <SummaryCard
           label="Members"
-          value="5"
+          value={group.members.length}
           icon={<Users size={19} />}
         />
 
         <SummaryCard
           label="Your balance"
-          value="+₹210"
+          value={formatSignedRupees(currentUserBalance)}
           icon={<ArrowRight size={19} />}
-          positive
+          positive={currentUserBalance > 0}
         />
 
       </section>
@@ -170,6 +303,7 @@ function GroupDetails() {
           <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
 
             <div>
+
               <h2 className="font-semibold text-slate-900">
                 Expenses
               </h2>
@@ -177,56 +311,93 @@ function GroupDetails() {
               <p className="mt-1 text-xs text-slate-400">
                 Recent shared expenses
               </p>
+
             </div>
 
             <span className="text-sm text-slate-400">
-              4 expenses
+              {expenses.length}{' '}
+              {expenses.length === 1
+                ? 'expense'
+                : 'expenses'}
             </span>
 
           </div>
 
-          <div className="divide-y divide-slate-100">
+          {expenses.length === 0 ? (
 
-            {expenses.map((expense) => (
-              <div
-                key={expense.description}
-                className="flex items-center gap-4 px-6 py-5 transition hover:bg-slate-50/70"
-              >
+            <div className="p-10 text-center">
 
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
-                  <Receipt size={18} />
-                </div>
+              <Receipt
+                size={28}
+                className="mx-auto text-slate-300"
+              />
 
-                <div className="min-w-0 flex-1">
+              <p className="mt-3 text-sm font-medium text-slate-600">
+                No expenses yet
+              </p>
 
-                  <p className="truncate text-sm font-semibold text-slate-800">
-                    {expense.description}
-                  </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Add an expense to start tracking this group.
+              </p>
 
-                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
-                    <span>{expense.category}</span>
-                    <span>•</span>
-                    <span>Paid by {expense.paidBy}</span>
+            </div>
+
+          ) : (
+
+            <div className="divide-y divide-slate-100">
+
+              {expenses.map((expense) => (
+
+                <div
+                  key={expense.id}
+                  className="flex items-center gap-4 px-6 py-5 transition hover:bg-slate-50/70"
+                >
+
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                    <Receipt size={18} />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+
+                    <p className="truncate text-sm font-semibold text-slate-800">
+                      {expense.description}
+                    </p>
+
+                    <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+
+                      <span>
+                        {expense.category || 'General'}
+                      </span>
+
+                      <span>•</span>
+
+                      <span>
+                        Paid by {expense.paidByName || 'Unknown'}
+                      </span>
+
+                    </div>
+
+                  </div>
+
+                  <div className="text-right">
+
+                    <p className="text-sm font-semibold text-slate-800">
+                      {formatRupees(expense.amountPaise)}
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-400">
+                      {formatDate(expense.expenseDate)}
+                    </p>
+
                   </div>
 
                 </div>
 
-                <div className="text-right">
+              ))}
 
-                  <p className="text-sm font-semibold text-slate-800">
-                    {expense.amount}
-                  </p>
+            </div>
 
-                  <p className="mt-1 text-xs text-slate-400">
-                    {expense.date}
-                  </p>
-
-                </div>
-
-              </div>
-            ))}
-
-          </div>
+          )}
 
         </section>
 
@@ -247,17 +418,26 @@ function GroupDetails() {
 
           <div className="divide-y divide-slate-100">
 
-            {members.map((member) => {
-              const positive = member.balance.startsWith('+')
+            {group.members.map((member) => {
+
+              const memberBalance =
+                balances.find(
+                  (balance) =>
+                    balance.userId === member.userId,
+                )?.balancePaise ?? 0
+
+              const positive = memberBalance > 0
+              const negative = memberBalance < 0
 
               return (
+
                 <div
-                  key={member.name}
+                  key={member.userId}
                   className="flex items-center gap-3 px-6 py-4"
                 >
 
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50 text-xs font-semibold text-emerald-700">
-                    {member.initials}
+                    {getInitials(member.name)}
                   </div>
 
                   <div className="min-w-0 flex-1">
@@ -267,7 +447,10 @@ function GroupDetails() {
                     </p>
 
                     <p className="mt-0.5 text-[11px] text-slate-400">
-                      {member.status}
+                      {getBalanceStatus(
+                        memberBalance,
+                        member.userId,
+                      )}
                     </p>
 
                   </div>
@@ -276,13 +459,16 @@ function GroupDetails() {
                     className={`text-sm font-semibold ${
                       positive
                         ? 'text-emerald-600'
-                        : 'text-rose-500'
+                        : negative
+                          ? 'text-rose-500'
+                          : 'text-slate-400'
                     }`}
                   >
-                    {member.balance}
+                    {formatSignedRupees(memberBalance)}
                   </p>
 
                 </div>
+
               )
             })}
 
@@ -314,7 +500,7 @@ function GroupDetails() {
           </div>
 
           <Link
-            to="/balances"
+            to={`/balances?groupId=${group.id}`}
             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#071410] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#0d211a]"
           >
             View settlement
@@ -335,19 +521,22 @@ function GroupDetails() {
           </div>
 
           <div>
+
             <p className="text-xs text-slate-400">
               Group join code
             </p>
 
             <p className="mt-0.5 font-mono text-sm font-semibold tracking-wider text-slate-800">
-              BALI24
+              {group.joinCode}
             </p>
+
           </div>
 
         </div>
 
         <button
           type="button"
+          onClick={copyJoinCode}
           className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
         >
           <Copy size={16} />
@@ -376,6 +565,7 @@ function SummaryCard({
         </div>
 
         <div>
+
           <p className="text-xs text-slate-400">
             {label}
           </p>
@@ -389,6 +579,7 @@ function SummaryCard({
           >
             {value}
           </p>
+
         </div>
 
       </div>
