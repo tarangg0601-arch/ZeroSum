@@ -91,6 +91,18 @@ public class SettlementService {
     @Transactional(readOnly = true)
     public SettlementResponseDTO simulatePayment(Long groupId, WhatIfRequest request) {
         List<BalanceDTO> current = getBalances(groupId);
+        if (request.expense() != null) {
+            ExpenseResponse hypothetical = expenseService.previewExpense(groupId, request.expense());
+            Map<Long, Long> values = current.stream().collect(Collectors.toMap(BalanceDTO::userId, BalanceDTO::balancePaise));
+            values.compute(hypothetical.paidBy(), (id, balance) -> Math.addExact(balance, hypothetical.amountPaise()));
+            hypothetical.shares().forEach(share -> values.compute(share.userId(), (id, balance) -> Math.subtractExact(balance, share.shareAmountPaise())));
+            List<BalanceDTO> projected = current.stream().map(balance -> new BalanceDTO(balance.userId(), balance.userName(), values.get(balance.userId()))).toList();
+            List<SettlementTransactionDTO> plan = settlementEngine.calculateSettlements(projected);
+            return new SettlementResponseDTO(projected, plan, settlementEngine.explainSettlements(plan));
+        }
+        if (request.fromUserId() == null || request.toUserId() == null || request.amountPaise() == null || request.amountPaise() <= 0) {
+            throw new IllegalArgumentException("Provide a payment or hypothetical expense");
+        }
         if (request.fromUserId().equals(request.toUserId())) {
             throw new IllegalArgumentException("A payment must be between two different members");
         }

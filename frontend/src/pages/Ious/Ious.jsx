@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { rupeesToPaise } from '../../utils/currency.js'
 
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
 
@@ -29,7 +30,7 @@ function Ious() {
   const create = async event => {
     event.preventDefault(); setBusy(true); setError('')
     try {
-      const response = await fetch(`${API_BASE_URL}/ious`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fromUserId: Number(form.fromUserId), toUserId: Number(form.toUserId), amountPaise: Math.round(Number(form.amount) * 100), note: form.note, groupId: Number(groupId) }) })
+      const response = await fetch(`${API_BASE_URL}/ious`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fromUserId: Number(form.fromUserId), toUserId: Number(form.toUserId), amountPaise: rupeesToPaise(form.amount), note: form.note, groupId: Number(groupId) }) })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Unable to add IOU.')
       setForm(current => ({ ...current, amount: '', note: '' })); await reload()

@@ -235,6 +235,20 @@ public class ExpenseService {
             String requestedType,
             List<ExpenseSplitInput> inputs
     ) {
+        List<ExpenseSplitInput> values = calculateShares(participants, amountPaise, requestedType, inputs);
+        var amounts = values.stream().collect(java.util.stream.Collectors.toMap(ExpenseSplitInput::userId, ExpenseSplitInput::value));
+        for (User participant : participants) {
+            ExpenseShare share = new ExpenseShare();
+            share.setExpense(expense);
+            share.setUser(participant);
+            share.setShareAmountPaise(amounts.get(participant.getId()));
+            share.setShareType(requestedType == null ? "equal" : requestedType.toLowerCase());
+            share.setParticipated(true);
+            expenseShareRepository.save(share);
+        }
+    }
+
+    private List<ExpenseSplitInput> calculateShares(List<User> participants, Long amountPaise, String requestedType, List<ExpenseSplitInput> inputs) {
         String type = requestedType == null ? "equal" : requestedType.toLowerCase();
         if (!List.of("equal", "exact", "percentage", "shares").contains(type)) {
             throw new IllegalArgumentException("Split type must be equal, exact, percentage, or shares");
@@ -279,18 +293,20 @@ public class ExpenseService {
             if (!type.equals("exact")) values = allocate(amountPaise, values, total);
         }
 
-        var amounts = values.stream().collect(java.util.stream.Collectors.toMap(ExpenseSplitInput::userId, ExpenseSplitInput::value));
-        for (User participant : participants) {
+        return values;
+    }
 
-            ExpenseShare share = new ExpenseShare();
-            share.setExpense(expense);
-            share.setUser(participant);
-            share.setShareAmountPaise(amounts.get(participant.getId()));
-            share.setShareType(type);
-            share.setParticipated(true);
-
-            expenseShareRepository.save(share);
-        }
+    @Transactional(readOnly = true)
+    public ExpenseResponse previewExpense(Long groupId, CreateExpenseRequest request) {
+        findGroup(groupId);
+        User payer = findUser(request.paidBy());
+        List<User> participants = validateParticipants(groupId, payer, request.participantIds());
+        List<ExpenseSplitInput> amounts = calculateShares(participants, request.amountPaise(), request.splitType(), request.splits());
+        String type = request.splitType() == null ? "equal" : request.splitType().toLowerCase();
+        var names = participants.stream().collect(java.util.stream.Collectors.toMap(User::getId, User::getName));
+        var shares = amounts.stream().map(split -> new ExpenseShareResponse(split.userId(), names.get(split.userId()), split.value(), type, true)).toList();
+        return new ExpenseResponse(null, groupId, payer.getId(), payer.getName(), request.description(), request.amountPaise(),
+                request.category(), request.expenseDate(), false, null, shares);
     }
 
     private List<ExpenseSplitInput> allocate(long amount, List<ExpenseSplitInput> weights, long totalWeight) {

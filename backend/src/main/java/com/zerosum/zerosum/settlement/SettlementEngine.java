@@ -36,15 +36,15 @@ public class SettlementEngine {
             balances.merge(
                     expense.paidBy(),
                     expense.amountPaise(),
-                    Long::sum
+                    Math::addExact
             );
 
             for (var share : expense.shares()) {
 
                 balances.merge(
                         share.userId(),
-                        -share.shareAmountPaise(),
-                        Long::sum
+                        Math.negateExact(share.shareAmountPaise()),
+                        Math::addExact
                 );
             }
         }
@@ -103,8 +103,8 @@ public class SettlementEngine {
 
                             int comparison =
                                     Long.compare(
-                                            Math.abs(b.balancePaise),
-                                            Math.abs(a.balancePaise)
+                            Math.negateExact(b.balancePaise),
+                            Math.negateExact(a.balancePaise)
                                     );
 
                             if (comparison != 0) {
@@ -152,7 +152,7 @@ public class SettlementEngine {
 
             long amount = Math.min(
                     creditor.balancePaise,
-                    Math.abs(debtor.balancePaise)
+                    Math.negateExact(debtor.balancePaise)
             );
 
             transactions.add(

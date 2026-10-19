@@ -1,10 +1,11 @@
 package com.zerosum.zerosum.settlement;
 
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
+import jakarta.validation.Valid;
+import com.zerosum.zerosum.dto.CreateExpenseRequest;
 
 public record WhatIfRequest(
-        @NotNull Long fromUserId,
-        @NotNull Long toUserId,
-        @NotNull @Positive Long amountPaise
+        Long fromUserId,
+        Long toUserId,
+        Long amountPaise,
+        @Valid CreateExpenseRequest expense
 ) {}

@@ -1,6 +1,8 @@
+import { decimalToScaledInteger } from './currency.js'
+
 export function createSplitPayload(amountPaise, splitType, participantIds, values) {
   if (splitType === 'equal') return { splitType }
-  const conversion = value => splitType === 'shares' ? Number(value) : Math.round(Number(value) * 100)
+  const conversion = value => splitType === 'shares' ? Number(value) : decimalToScaledInteger(value, 2)
   const splits = participantIds.map(userId => {
     const value = conversion(values[userId])
     if (!Number.isFinite(value) || value < 0 || (splitType === 'shares' && !Number.isInteger(value))) {

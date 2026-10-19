@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { rupeesToPaise } from '../../utils/currency.js'
 
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
 const now = new Date()
@@ -41,7 +42,7 @@ function Recurring() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           description: form.description,
-          amountPaise: Math.round(Number(form.amount) * 100),
+          amountPaise: rupeesToPaise(form.amount),
           category: form.category,
           frequency: form.frequency,
           nextRunDate: form.nextRunDate,

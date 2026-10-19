@@ -19,6 +19,7 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { rupeesToPaise } from '../../utils/currency.js'
 
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
 
@@ -47,6 +48,8 @@ function Balances() {
   const [simulation, setSimulation] = useState(null)
   const [simulationError, setSimulationError] = useState('')
   const [payment, setPayment] = useState({ fromUserId: '', toUserId: '', amount: '' })
+  const [simulationMode, setSimulationMode] = useState('payment')
+  const [hypotheticalExpense, setHypotheticalExpense] = useState({ description: '', paidBy: '', amount: '', participantIds: [] })
   const [simulating, setSimulating] = useState(false)
 
   useEffect(() => {
@@ -133,14 +136,20 @@ function Balances() {
       const response = await fetch(`${API_BASE_URL}/groups/${groupId}/settlement/whatif`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(simulationMode === 'expense' ? { expense: {
+          description: hypotheticalExpense.description,
+          amountPaise: rupeesToPaise(hypotheticalExpense.amount),
+          category: 'general', expenseDate: new Date().toISOString().slice(0, 10),
+          paidBy: Number(hypotheticalExpense.paidBy),
+          participantIds: hypotheticalExpense.participantIds.map(Number), splitType: 'equal',
+        } } : {
           fromUserId: Number(payment.fromUserId),
           toUserId: Number(payment.toUserId),
-          amountPaise: Math.round(Number(payment.amount) * 100),
+          amountPaise: rupeesToPaise(payment.amount),
         }),
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Unable to simulate payment')
+      if (!response.ok) throw new Error(data.error || 'Unable to simulate')
       setSimulation(data)
     } catch (err) {
       setSimulationError(err.message)
@@ -384,16 +393,26 @@ function Balances() {
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">What-if simulator</p>
-          <h2 className="mt-2 font-semibold text-slate-900">Preview a payment</h2>
-          <p className="mt-1 text-sm text-slate-500">Recalculates the plan in memory. It does not record a payment.</p>
+          <h2 className="mt-2 font-semibold text-slate-900">Preview a change</h2>
+          <p className="mt-1 text-sm text-slate-500">Recalculates the plan in memory. Nothing is saved.</p>
+          <label className="mt-4 block text-xs font-medium text-slate-600">What to simulate
+            <select aria-label="Simulation type" value={simulationMode} onChange={e => { setSimulationMode(e.target.value); setSimulation(null); setSimulationError('') }} className="mt-1 block rounded-lg border border-slate-200 px-3 py-2 text-sm">
+              <option value="payment">Payment</option><option value="expense">Expense</option>
+            </select>
+          </label>
           <form onSubmit={runSimulation} className="mt-4 grid gap-3 sm:grid-cols-3">
-            <select required aria-label="Payer" value={payment.fromUserId} onChange={e => setPayment({ ...payment, fromUserId: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            {simulationMode === 'payment' ? <><select required aria-label="Payer" value={payment.fromUserId} onChange={e => setPayment({ ...payment, fromUserId: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
               <option value="">Payer</option>{balances.filter(b => b.balancePaise < 0).map(b => <option key={b.userId} value={b.userId}>{b.userName}</option>)}
             </select>
             <select required aria-label="Recipient" value={payment.toUserId} onChange={e => setPayment({ ...payment, toUserId: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
               <option value="">Recipient</option>{balances.filter(b => b.balancePaise > 0).map(b => <option key={b.userId} value={b.userId}>{b.userName}</option>)}
             </select>
-            <input required aria-label="Amount in rupees" type="number" min="0.01" step="0.01" placeholder="Amount ₹" value={payment.amount} onChange={e => setPayment({ ...payment, amount: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+            <input required aria-label="Amount in rupees" type="number" min="0.01" step="0.01" placeholder="Amount ₹" value={payment.amount} onChange={e => setPayment({ ...payment, amount: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" /></> : <>
+              <input required aria-label="Expense description" placeholder="Expense description" value={hypotheticalExpense.description} onChange={e => setHypotheticalExpense({ ...hypotheticalExpense, description: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+              <select required aria-label="Expense payer" value={hypotheticalExpense.paidBy} onChange={e => setHypotheticalExpense({ ...hypotheticalExpense, paidBy: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm"><option value="">Paid by</option>{balances.map(b => <option key={b.userId} value={b.userId}>{b.userName}</option>)}</select>
+              <input required aria-label="Expense amount in rupees" type="number" min="0.01" step="0.01" placeholder="Amount ₹" value={hypotheticalExpense.amount} onChange={e => setHypotheticalExpense({ ...hypotheticalExpense, amount: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+              <fieldset className="sm:col-span-3"><legend className="text-xs text-slate-600">Participants</legend><div className="flex flex-wrap gap-3">{balances.map(b => <label key={b.userId} className="text-sm"><input type="checkbox" checked={hypotheticalExpense.participantIds.includes(b.userId)} onChange={e => setHypotheticalExpense({ ...hypotheticalExpense, participantIds: e.target.checked ? [...hypotheticalExpense.participantIds, b.userId] : hypotheticalExpense.participantIds.filter(id => id !== b.userId) })} /> {b.userName}</label>)}</div></fieldset>
+            </>}
             <button disabled={simulating} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{simulating ? 'Calculating…' : 'Simulate'}</button>
           </form>
           {simulationError && <p role="alert" className="mt-3 text-sm text-rose-600">{simulationError}</p>}
