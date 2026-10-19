@@ -511,6 +511,9 @@ function GroupDetails() {
             Recurring expenses
           </Link>
 
+          <Link to={`/groups/${group.id}/insights`} className="inline-flex shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white px-5 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50">Insights</Link>
+          <Link to={`/groups/${group.id}/ious`} className="inline-flex shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white px-5 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50">IOUs</Link>
+
         </div>
 
       </section>

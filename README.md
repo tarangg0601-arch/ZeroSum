@@ -9,9 +9,11 @@ ZeroSum is a React and Spring Boot expense sharing app for groups. It stores mon
 - Calculate balances and optimized payments. The heap-based greedy method is deterministic and uses at most `n - 1` transfers; it is not guaranteed to find the globally minimum transfer count in every case.
 - Preview a hypothetical payment at `POST /api/groups/{groupId}/settlement/whatif`. This recalculates in memory and does not persist the simulation.
 - Manage daily, weekly, monthly, and yearly recurring rules at `/api/groups/{groupId}/recurring`; due expenses are generated once per rule/date by the scheduled worker.
+- Record direct IOUs and mark them settled, separately from shared group expense balances.
+- View date-filtered category spending insights and record completed settlement payments; completed payments adjust future balances and appear in payment history.
 - Configure the browser API URL and backend CORS origins through environment variables.
 
-The database migration also defines tables for IOUs and settlement history, but their user-facing workflows and APIs are not implemented yet. Authentication and deployed hosting are also not configured.
+Authentication and deployed hosting are not configured. Payments marked complete represent user-confirmed transfers; the app does not verify bank transactions.
 
 ## Requirements
 
@@ -36,8 +38,11 @@ The database migration also defines tables for IOUs and settlement history, but 
 - `GET /api/groups/{groupId}/balances`
 - `GET /api/groups/{groupId}/settlement`
 - `POST /api/groups/{groupId}/settlement/whatif`
+- `POST /api/groups/{groupId}/settlement/payments` and `GET /api/groups/{groupId}/settlement/history`
 - `GET/POST /api/groups/{groupId}/recurring`
 - `PATCH /api/groups/{groupId}/recurring/{ruleId}` with `{"active": false}` to pause or `true` to resume.
+- `GET /api/groups/{groupId}/insights?from=YYYY-MM-DD&to=YYYY-MM-DD`
+- `POST /api/ious`, `GET /api/groups/{groupId}/ious`, and `PATCH /api/ious/{iouId}` with `{"settled": true}`.
 - `GET /api/health`
 
 Expense create/update requests include `participantIds`; `splitType` is `equal`, `exact`, `percentage`, or `shares`. For non-equal splits, provide `splits: [{"userId": 1, "value": 2500}]`. `value` is paise for exact, basis points for percentage, and integer weight for shares.

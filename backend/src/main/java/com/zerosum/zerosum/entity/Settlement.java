@@ -1,17 +1,11 @@
 package com.zerosum.zerosum.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.Instant;
 
 @Entity
 @Table(name = "settlements")
-@Getter
-@Setter
-@NoArgsConstructor
 public class Settlement {
 
     @Id
@@ -38,4 +32,18 @@ public class Settlement {
 
     @Column(name = "settled_at")
     private Instant settledAt;
+
+    public Long getId() { return id; }
+    public Group getGroup() { return group; }
+    public void setGroup(Group group) { this.group = group; }
+    public User getFromUser() { return fromUser; }
+    public void setFromUser(User fromUser) { this.fromUser = fromUser; }
+    public User getToUser() { return toUser; }
+    public void setToUser(User toUser) { this.toUser = toUser; }
+    public Long getAmountPaise() { return amountPaise; }
+    public void setAmountPaise(Long amountPaise) { this.amountPaise = amountPaise; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+    public Instant getSettledAt() { return settledAt; }
+    public void setSettledAt(Instant settledAt) { this.settledAt = settledAt; }
 }

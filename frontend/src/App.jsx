@@ -8,6 +8,8 @@ import GroupDetails from './pages/Group/GroupDetails'
 import AddExpense from './pages/AddExpense/AddExpense'
 import Balances from './pages/Balances/Balances'
 import Recurring from './pages/Recurring/Recurring'
+import Insights from './pages/Insights/Insights'
+import Ious from './pages/Ious/Ious'
 
 
 function App() {
@@ -49,6 +51,8 @@ function App() {
           />
 
           <Route path="/groups/:groupId/recurring" element={<Recurring />} />
+          <Route path="/groups/:groupId/insights" element={<Insights />} />
+          <Route path="/groups/:groupId/ious" element={<Ious />} />
 
         </Route>
 

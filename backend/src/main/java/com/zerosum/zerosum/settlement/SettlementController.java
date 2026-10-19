@@ -2,6 +2,7 @@ package com.zerosum.zerosum.settlement;
 
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 
 import java.util.List;
 
@@ -37,5 +38,17 @@ public class SettlementController {
             @Valid @RequestBody WhatIfRequest request
     ) {
         return settlementService.simulatePayment(groupId, request);
+    }
+
+    @PostMapping("/settlement/payments")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PaymentHistoryItem recordPayment(@PathVariable Long groupId,
+            @Valid @RequestBody RecordPaymentRequest request) {
+        return settlementService.recordPayment(groupId, request);
+    }
+
+    @GetMapping("/settlement/history")
+    public List<PaymentHistoryItem> getPaymentHistory(@PathVariable Long groupId) {
+        return settlementService.getPaymentHistory(groupId);
     }
 }

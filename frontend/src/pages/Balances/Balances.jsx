@@ -37,6 +37,10 @@ function Balances() {
   const [group, setGroup] = useState(null)
   const [settlement, setSettlement] = useState(null)
   const [rawPaymentCount, setRawPaymentCount] = useState(0)
+  const [paymentHistory, setPaymentHistory] = useState([])
+  const [recordingPayment, setRecordingPayment] = useState(false)
+  const [paymentError, setPaymentError] = useState('')
+  const [refresh, setRefresh] = useState(0)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -51,11 +55,12 @@ function Balances() {
         setLoading(true)
         setError('')
 
-        const [groupResponse, settlementResponse, expensesResponse] =
+        const [groupResponse, settlementResponse, expensesResponse, historyResponse] =
           await Promise.all([
             fetch(`${API_BASE_URL}/groups/${groupId}`),
             fetch(`${API_BASE_URL}/groups/${groupId}/settlement`),
             fetch(`${API_BASE_URL}/groups/${groupId}/expenses`),
+            fetch(`${API_BASE_URL}/groups/${groupId}/settlement/history`),
           ])
 
         if (!groupResponse.ok) {
@@ -66,11 +71,14 @@ function Balances() {
           throw new Error('Failed to load settlement')
         }
         if (!expensesResponse.ok) throw new Error('Failed to load expenses')
+        if (!historyResponse.ok) throw new Error('Failed to load payment history')
 
         const groupData = await groupResponse.json()
         const settlementData = await settlementResponse.json()
         const expenses = await expensesResponse.json()
+        const history = await historyResponse.json()
         setRawPaymentCount(expenses.reduce((count, expense) => count + expense.shares.filter(share => share.userId !== expense.paidBy).length, 0))
+        setPaymentHistory(history)
 
         setGroup(groupData)
         setSettlement(settlementData)
@@ -85,7 +93,7 @@ function Balances() {
     }
 
     loadSettlement()
-  }, [groupId])
+  }, [groupId, refresh])
 
   const balances = useMemo(() => settlement?.balances || [], [settlement])
   const transactions = useMemo(() => settlement?.transactions || [], [settlement])
@@ -140,6 +148,20 @@ function Balances() {
     } finally {
       setSimulating(false)
     }
+  }
+
+  const recordPayment = async transaction => {
+    setRecordingPayment(true)
+    setPaymentError('')
+    try {
+      const response = await fetch(`${API_BASE_URL}/groups/${groupId}/settlement/payments`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromUserId: transaction.fromUserId, toUserId: transaction.toUserId, amountPaise: transaction.amountPaise }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Unable to record payment.')
+      setRefresh(value => value + 1)
+    } catch (err) { setPaymentError(err.message) } finally { setRecordingPayment(false) }
   }
 
   const formatRupees = (paise) => {
@@ -385,6 +407,8 @@ function Balances() {
 
       {/* Main settlement card */}
 
+      {paymentError && <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{paymentError}</p>}
+
       <section className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
         <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
@@ -531,6 +555,7 @@ function Balances() {
                     <p className="text-xs text-slate-400">
                       payment
                     </p>
+                    <button type="button" disabled={recordingPayment} onClick={() => recordPayment(transaction)} className="mt-2 rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">Record paid</button>
 
                   </div>
 
@@ -547,6 +572,11 @@ function Balances() {
 
 
       {/* Balances + explanation */}
+
+      <section className="mb-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-6 py-5"><h2 className="font-semibold text-slate-900">Payment history</h2><p className="mt-1 text-xs text-slate-400">Recorded transfers reduce current balances.</p></div>
+        {paymentHistory.length === 0 ? <p className="px-6 py-6 text-sm text-slate-500">No payments recorded yet.</p> : <ul className="divide-y divide-slate-100">{paymentHistory.map(item => <li key={item.id} className="flex flex-wrap items-center gap-3 px-6 py-4 text-sm"><span className="font-medium text-slate-700">{item.fromUserName} paid {item.toUserName}</span><span className="ml-auto font-semibold text-slate-900">{formatRupees(item.amountPaise)}</span><span className="text-xs text-slate-400">{item.settledAt ? new Date(item.settledAt).toLocaleDateString() : item.status}</span></li>)}</ul>}
+      </section>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
 
