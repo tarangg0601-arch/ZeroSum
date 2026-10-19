@@ -5,6 +5,7 @@ ZeroSum is a React and Spring Boot expense sharing app for groups. It stores mon
 ## Current functionality
 
 - Create and manage groups, members, and expenses through the REST API.
+- Create named participants from the UI, start a group with its creator, and add more members without manual database IDs. The MVP has no authentication; group creator is used as the current user in summaries.
 - Split expenses equally, by exact paise amounts, percentage, or share units. Percentage inputs are integer basis points (`10000` = `100%`); exact inputs are paise. Percentage and share allocations distribute leftover paise in participant order.
 - Calculate balances and optimized payments. The heap-based greedy method is deterministic and uses at most `n - 1` transfers; it is not guaranteed to find the globally minimum transfer count in every case.
 - Preview a hypothetical payment at `POST /api/groups/{groupId}/settlement/whatif`. This recalculates in memory and does not persist the simulation.
@@ -44,6 +45,7 @@ Authentication and deployed hosting are not configured. Payments marked complete
 - `GET /api/groups/{groupId}/insights?from=YYYY-MM-DD&to=YYYY-MM-DD`
 - `POST /api/ious`, `GET /api/groups/{groupId}/ious`, and `PATCH /api/ious/{iouId}` with `{"settled": true}`.
 - `GET /api/health`
+- `POST /api/users` to create a named participant for group workflows.
 
 Expense create/update requests include `participantIds`; `splitType` is `equal`, `exact`, `percentage`, or `shares`. For non-equal splits, provide `splits: [{"userId": 1, "value": 2500}]`. `value` is paise for exact, basis points for percentage, and integer weight for shares.
 
@@ -62,7 +64,8 @@ Recurring rule creation accepts `description`, `amountPaise`, `category`, `frequ
 - Backend tests: `cd backend && ./mvnw test` (Windows: `mvnw.cmd test`).
 - Frontend production build: `cd frontend && npm ci && npm run build`.
 - Frontend lint: `cd frontend && npm run lint`.
+- Frontend split-input tests: `cd frontend && npm test`.
 
 ## Deployment readiness
 
-Configure `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` in the backend host, `PORT` as provided by the host, and `APP_CORS_ALLOWED_ORIGINS` to the deployed frontend origin. Build the frontend with `VITE_API_BASE_URL` set to the backend origin. No deployment files or hosted environment are currently configured; deployment has not been performed.
+`backend/Dockerfile` and `render.yaml` prepare a Render API and static frontend. Configure `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` in the backend host for a dedicated PostgreSQL database, and keep `APP_CORS_ALLOWED_ORIGINS` aligned with the frontend origin. Deployment has not been performed. The MVP has no authentication, so it needs an authentication layer before public production use.

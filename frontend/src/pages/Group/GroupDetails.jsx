@@ -8,12 +8,9 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { createUser } from '../../api/groupsApi'
 
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
-
-// Temporary current user for MVP.
-// Authentication will replace this later.
-const CURRENT_USER_ID = 2
 
 function GroupDetails() {
   const { groupId } = useParams()
@@ -23,6 +20,10 @@ function GroupDetails() {
   const [balances, setBalances] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [showInvite, setShowInvite] = useState(false)
+  const [inviteName, setInviteName] = useState('')
+  const [inviteError, setInviteError] = useState('')
+  const [inviting, setInviting] = useState(false)
 
   useEffect(() => {
     async function loadGroupData() {
@@ -80,11 +81,34 @@ function GroupDetails() {
 
   const currentUserBalance = useMemo(() => {
     const currentUser = balances.find(
-      (balance) => balance.userId === CURRENT_USER_ID,
+      (balance) => balance.userId === group?.createdBy,
     )
 
     return currentUser?.balancePaise ?? 0
-  }, [balances])
+  }, [balances, group?.createdBy])
+
+  async function handleInvite(event) {
+    event.preventDefault()
+    setInviting(true)
+    setInviteError('')
+    try {
+      const user = await createUser({ name: inviteName })
+      const response = await fetch(`${API_BASE_URL}/groups/${groupId}/members`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.userId }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || result.message || 'Unable to add participant.')
+      const [groupResponse, balanceResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/groups/${groupId}`), fetch(`${API_BASE_URL}/groups/${groupId}/balances`),
+      ])
+      if (!groupResponse.ok || !balanceResponse.ok) throw new Error('Participant was added, but group data could not be refreshed.')
+      setGroup(await groupResponse.json())
+      setBalances(await balanceResponse.json())
+      setInviteName('')
+      setShowInvite(false)
+    } catch (err) { setInviteError(err.message) } finally { setInviting(false) }
+  }
 
   const formatRupees = (paise) => {
     const amount = Number(paise || 0) / 100
@@ -136,13 +160,13 @@ function GroupDetails() {
 
   const getBalanceStatus = (memberBalance, memberId) => {
     if (memberBalance > 0) {
-      return memberId === CURRENT_USER_ID
+      return memberId === group?.createdBy
         ? 'You are owed'
         : 'Owed'
     }
 
     if (memberBalance < 0) {
-      return memberId === CURRENT_USER_ID
+      return memberId === group?.createdBy
         ? 'You owe'
         : 'Owes'
     }
@@ -250,6 +274,7 @@ function GroupDetails() {
 
             <button
               type="button"
+              onClick={() => { setInviteError(''); setShowInvite(true) }}
               className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
             >
               <Users size={17} />
@@ -552,6 +577,14 @@ function GroupDetails() {
 
       </section>
 
+      {showInvite && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setShowInvite(false) }}>
+        <form onSubmit={handleInvite} className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
+          <div><h2 className="text-xl font-semibold text-slate-900">Add a participant</h2><p className="mt-1 text-sm text-slate-500">Add a named member to {group.name}.</p></div>
+          {inviteError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{inviteError}</p>}
+          <label className="block text-sm text-slate-600">Participant name<input required maxLength="100" autoFocus value={inviteName} onChange={event => setInviteName(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2" /></label>
+          <div className="flex justify-end gap-2"><button type="button" onClick={() => setShowInvite(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600">Cancel</button><button disabled={inviting} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{inviting ? 'Adding…' : 'Add member'}</button></div>
+        </form>
+      </div>}
     </div>
   )
 }

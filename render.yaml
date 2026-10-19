@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: zerosum-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    envVars:
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: APP_CORS_ALLOWED_ORIGINS
+        value: https://zerosum-frontend.onrender.com
+  - type: web
+    name: zerosum-frontend
+    runtime: static
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: ./frontend/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://zerosum-api.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

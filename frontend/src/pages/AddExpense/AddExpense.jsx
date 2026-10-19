@@ -23,6 +23,7 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { createSplitPayload } from '../../utils/expenseSplits.js'
 
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
 
@@ -204,17 +205,7 @@ function AddExpense() {
         expenseDate: date,
         paidBy: Number(paidBy),
         participantIds: selectedMembers.map(Number),
-        splitType,
-      }
-      if (splitType !== 'equal') {
-        payload.splits = selectedMembers.map((userId) => ({
-          userId: Number(userId),
-          value: splitType === 'percentage'
-            ? Math.round(Number(splitValues[userId] || 0) * 100)
-            : splitType === 'exact'
-              ? Math.round(Number(splitValues[userId] || 0) * 100)
-              : Math.round(Number(splitValues[userId] || 0)),
-        }))
+        ...createSplitPayload(amountPaise, splitType, selectedMembers, splitValues),
       }
 
       const response = await fetch(
