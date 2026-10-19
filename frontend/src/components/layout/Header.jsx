@@ -22,6 +22,8 @@ function Header() {
       {/* Actions */}
       <div className="flex items-center gap-3">
 
+        <button type="button" onClick={() => { sessionStorage.removeItem('zerosum_token'); sessionStorage.removeItem('zerosum_user_id'); window.location.assign('/login') }} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600">Sign out</button>
+
         {/* Notifications */}
         <button
           type="button"

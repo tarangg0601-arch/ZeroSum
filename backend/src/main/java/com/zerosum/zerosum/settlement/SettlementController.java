@@ -5,6 +5,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 
 import java.util.List;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 @RestController
 @RequestMapping("/api/groups/{groupId}")
@@ -42,9 +44,9 @@ public class SettlementController {
 
     @PostMapping("/settlement/payments")
     @ResponseStatus(HttpStatus.CREATED)
-    public PaymentHistoryItem recordPayment(@PathVariable Long groupId,
+    public PaymentHistoryItem recordPayment(@AuthenticationPrincipal Jwt jwt, @PathVariable Long groupId,
             @Valid @RequestBody RecordPaymentRequest request) {
-        return settlementService.recordPayment(groupId, request);
+        return settlementService.recordPayment(groupId, request, Long.valueOf(jwt.getSubject()));
     }
 
     @GetMapping("/settlement/history")

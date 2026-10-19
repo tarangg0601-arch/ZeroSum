@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import GroupCard from '../../components/common/GroupCard'
-import { createGroup, createUser, getGroups } from '../../api/groupsApi'
+import { createGroup, getGroups } from '../../api/groupsApi'
 
 function Groups() {
   const navigate = useNavigate()
@@ -19,7 +19,6 @@ function Groups() {
   const [error, setError] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [groupName, setGroupName] = useState('')
-  const [creatorName, setCreatorName] = useState('')
   const [groupType, setGroupType] = useState('general')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
@@ -29,8 +28,7 @@ function Groups() {
     setCreating(true)
     setCreateError('')
     try {
-      const creator = await createUser({ name: creatorName })
-      const group = await createGroup({ name: groupName, groupType, createdBy: creator.userId })
+      const group = await createGroup({ name: groupName, groupType })
       navigate(`/groups/${group.id}`)
     } catch (err) {
       setCreateError(err.message)
@@ -50,7 +48,8 @@ function Groups() {
           const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/groups/${group.id}/balances`)
           if (!response.ok) throw new Error('Failed to load group balances')
           const balances = await response.json()
-          const creatorBalance = balances.find(balance => balance.userId === group.createdBy)?.balancePaise || 0
+          const currentUserId = Number(sessionStorage.getItem('zerosum_user_id'))
+          const creatorBalance = balances.find(balance => balance.userId === currentUserId)?.balancePaise || 0
           return { ...group, creatorBalance, hasOpenBalances: balances.some(balance => balance.balancePaise !== 0) }
         }))
         setGroups(withBalances)
@@ -252,9 +251,8 @@ function Groups() {
 
       {showCreate && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setShowCreate(false) }}>
         <form onSubmit={handleCreate} className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
-          <div><h2 className="text-xl font-semibold text-slate-900">Create a group</h2><p className="mt-1 text-sm text-slate-500">Add your name as the first participant.</p></div>
+          <div><h2 className="text-xl font-semibold text-slate-900">Create a group</h2><p className="mt-1 text-sm text-slate-500">Your account will be added as the first participant.</p></div>
           {createError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{createError}</p>}
-          <label className="block text-sm text-slate-600">Your name<input required maxLength="100" autoFocus value={creatorName} onChange={event => setCreatorName(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2" /></label>
           <label className="block text-sm text-slate-600">Group name<input required maxLength="150" value={groupName} onChange={event => setGroupName(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2" /></label>
           <label className="block text-sm text-slate-600">Group mode<select value={groupType} onChange={event => setGroupType(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2"><option value="general">General</option><option value="hostel">Hostel</option><option value="trip">Trip</option></select></label>
           <div className="flex justify-end gap-2"><button type="button" onClick={() => setShowCreate(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600">Cancel</button><button disabled={creating} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{creating ? 'Creating…' : 'Create group'}</button></div>

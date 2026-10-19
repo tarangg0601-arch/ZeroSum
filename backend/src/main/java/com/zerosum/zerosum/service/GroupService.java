@@ -36,9 +36,9 @@ public class GroupService {
     }
 
     @Transactional
-    public GroupResponse createGroup(CreateGroupRequest request) {
+    public GroupResponse createGroup(CreateGroupRequest request, Long currentUserId) {
 
-        User creator = userRepository.findById(request.createdBy())
+        User creator = userRepository.findById(currentUserId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("User not found")
                 );
@@ -54,18 +54,18 @@ public class GroupService {
 
         addMember(
                 savedGroup.getId(),
-                new AddGroupMemberRequest(creator.getId())
+                new AddGroupMemberRequest(creator.getId(), null)
         );
 
         return getGroup(savedGroup.getId());
     }
 
     @Transactional(readOnly = true)
-    public List<GroupResponse> getAllGroups() {
-
-        return groupRepository.findAll()
-                .stream()
+    public List<GroupResponse> getGroupsForUser(Long userId) {
+        return groupMemberRepository.findByUserId(userId).stream()
+                .map(GroupMember::getGroup)
                 .map(group -> getGroup(group.getId()))
+                .distinct()
                 .toList();
     }
 
@@ -110,10 +110,13 @@ public class GroupService {
                         new ResourceNotFoundException("Group not found")
                 );
 
-        User user = userRepository.findById(request.userId())
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("User not found")
-                );
+        if (request.userId() == null && (request.email() == null || request.email().isBlank())) {
+            throw new IllegalArgumentException("Provide a registered user's ID or email");
+        }
+        User user = (request.email() == null || request.email().isBlank()
+                ? userRepository.findById(request.userId())
+                : userRepository.findByEmailIgnoreCase(request.email().trim()))
+                .orElseThrow(() -> new ResourceNotFoundException("Registered user not found"));
 
         boolean alreadyMember = groupMemberRepository
                 .findByGroupId(groupId)

@@ -126,7 +126,10 @@ public class SettlementService {
     }
 
     @Transactional
-    public PaymentHistoryItem recordPayment(Long groupId, RecordPaymentRequest request) {
+    public PaymentHistoryItem recordPayment(Long groupId, RecordPaymentRequest request, Long actorId) {
+        if (!actorId.equals(request.fromUserId()) && !actorId.equals(request.toUserId())) {
+            throw new IllegalArgumentException("You must be a participant in the recorded payment");
+        }
         if (request.fromUserId().equals(request.toUserId())) throw new IllegalArgumentException("A payment must be between two different members");
         List<BalanceDTO> balances = getBalances(groupId);
         BalanceDTO payerBalance = balances.stream().filter(b -> b.userId().equals(request.fromUserId())).findFirst()

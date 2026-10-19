@@ -108,7 +108,7 @@ function Balances() {
    * The group creator is therefore treated as the current user.
    * This matches our current backend model.
    */
-  const currentUserId = group?.createdBy
+  const currentUserId = Number(sessionStorage.getItem('zerosum_user_id'))
 
   const currentUserBalance = useMemo(() => {
     return (

@@ -13,9 +13,17 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDate;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
 class SettlementServicePreviewTest {
+    @Test
+    void preventsAnAccountFromRecordingSomeoneElsesPayment() {
+        SettlementService service = new SettlementService(new SettlementEngine(), mock(GroupService.class), mock(ExpenseService.class),
+                mock(SettlementRepository.class), mock(GroupRepository.class), mock(UserRepository.class));
+        assertThrows(IllegalArgumentException.class, () -> service.recordPayment(7L, new RecordPaymentRequest(1L, 2L, 100L), 3L));
+    }
+
     @Test
     void hypotheticalExpenseRecalculatesBalancesWithoutPersisting() {
         SettlementEngine engine = new SettlementEngine();

@@ -11,7 +11,6 @@ public record CreateGroupRequest(
         @NotNull(message = "Group type is required")
         String groupType,
 
-        @NotNull(message = "Creator ID is required")
         Long createdBy
 
 ) {

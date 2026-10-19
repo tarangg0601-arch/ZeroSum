@@ -28,8 +28,9 @@ public class IouService {
     }
 
     @Transactional
-    public IouResponse create(CreateIouRequest request) {
+    public IouResponse create(CreateIouRequest request, Long actorId) {
         if (request.fromUserId().equals(request.toUserId())) throw new IllegalArgumentException("An IOU must be between two different people");
+        if (!actorId.equals(request.fromUserId()) && !actorId.equals(request.toUserId())) throw new IllegalArgumentException("You must be one of the people in this IOU");
         var from = userRepository.findById(request.fromUserId()).orElseThrow(() -> new ResourceNotFoundException("Lender not found"));
         var to = userRepository.findById(request.toUserId()).orElseThrow(() -> new ResourceNotFoundException("Borrower not found"));
         var iou = new Iou();
@@ -53,8 +54,9 @@ public class IouService {
     }
 
     @Transactional
-    public IouResponse markSettled(Long iouId) {
+    public IouResponse markSettled(Long iouId, Long actorId) {
         Iou iou = iouRepository.findById(iouId).orElseThrow(() -> new ResourceNotFoundException("IOU not found"));
+        if (!actorId.equals(iou.getFromUser().getId()) && !actorId.equals(iou.getToUser().getId())) throw new ResourceNotFoundException("IOU not found");
         iou.setSettled(true);
         return toResponse(iou);
     }

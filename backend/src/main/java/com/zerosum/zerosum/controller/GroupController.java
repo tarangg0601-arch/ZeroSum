@@ -9,6 +9,8 @@ import com.zerosum.zerosum.service.GroupService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import java.util.List;
 
@@ -26,15 +28,16 @@ public class GroupController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public GroupResponse createGroup(
+            @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateGroupRequest request
     ) {
-        return groupService.createGroup(request);
+        return groupService.createGroup(request, Long.valueOf(jwt.getSubject()));
     }
 
     // Get all groups
     @GetMapping
-    public List<GroupResponse> getAllGroups() {
-        return groupService.getAllGroups();
+    public List<GroupResponse> getAllGroups(@AuthenticationPrincipal Jwt jwt) {
+        return groupService.getGroupsForUser(Long.valueOf(jwt.getSubject()));
     }
 
     // Get one group

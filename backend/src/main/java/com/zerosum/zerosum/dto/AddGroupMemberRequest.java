@@ -1,11 +1,11 @@
 package com.zerosum.zerosum.dto;
 
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Email;
 
 public record AddGroupMemberRequest(
 
-        @NotNull(message = "User ID is required")
-        Long userId
+        Long userId,
+        @Email String email
 
 ) {
 }

@@ -30,6 +30,10 @@ function Ious() {
   const create = async event => {
     event.preventDefault(); setBusy(true); setError('')
     try {
+      const currentUserId = Number(sessionStorage.getItem('zerosum_user_id'))
+      if (currentUserId !== Number(form.fromUserId) && currentUserId !== Number(form.toUserId)) {
+        throw new Error('You must be the lender or borrower to record this IOU.')
+      }
       const response = await fetch(`${API_BASE_URL}/ious`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fromUserId: Number(form.fromUserId), toUserId: Number(form.toUserId), amountPaise: rupeesToPaise(form.amount), note: form.note, groupId: Number(groupId) }) })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Unable to add IOU.')

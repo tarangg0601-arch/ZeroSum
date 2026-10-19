@@ -10,6 +10,8 @@ import Balances from './pages/Balances/Balances'
 import Recurring from './pages/Recurring/Recurring'
 import Insights from './pages/Insights/Insights'
 import Ious from './pages/Ious/Ious'
+import Auth from './pages/Auth/Auth'
+import { useLocation } from 'react-router-dom'
 
 
 function App() {
@@ -18,7 +20,9 @@ function App() {
 
       <Routes>
 
-        <Route element={<MainLayout />}>
+        <Route path="/login" element={<Auth />} />
+
+        <Route element={<RequireAuth><MainLayout /></RequireAuth>}>
 
           {/* Dashboard */}
           <Route
@@ -66,6 +70,11 @@ function App() {
 
     </BrowserRouter>
   )
+}
+
+function RequireAuth({ children }) {
+  const location = useLocation()
+  return sessionStorage.getItem('zerosum_token') ? children : <Navigate to="/login" replace state={{ from: location }} />
 }
 
 export default App

@@ -8,7 +8,6 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { createUser } from '../../api/groupsApi'
 
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
 
@@ -21,7 +20,7 @@ function GroupDetails() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showInvite, setShowInvite] = useState(false)
-  const [inviteName, setInviteName] = useState('')
+  const [inviteEmail, setInviteEmail] = useState('')
   const [inviteError, setInviteError] = useState('')
   const [inviting, setInviting] = useState(false)
 
@@ -81,21 +80,20 @@ function GroupDetails() {
 
   const currentUserBalance = useMemo(() => {
     const currentUser = balances.find(
-      (balance) => balance.userId === group?.createdBy,
+      (balance) => balance.userId === Number(sessionStorage.getItem('zerosum_user_id')),
     )
 
     return currentUser?.balancePaise ?? 0
-  }, [balances, group?.createdBy])
+  }, [balances])
 
   async function handleInvite(event) {
     event.preventDefault()
     setInviting(true)
     setInviteError('')
     try {
-      const user = await createUser({ name: inviteName })
       const response = await fetch(`${API_BASE_URL}/groups/${groupId}/members`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.userId }),
+        body: JSON.stringify({ email: inviteEmail }),
       })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || result.message || 'Unable to add participant.')
@@ -105,7 +103,7 @@ function GroupDetails() {
       if (!groupResponse.ok || !balanceResponse.ok) throw new Error('Participant was added, but group data could not be refreshed.')
       setGroup(await groupResponse.json())
       setBalances(await balanceResponse.json())
-      setInviteName('')
+      setInviteEmail('')
       setShowInvite(false)
     } catch (err) { setInviteError(err.message) } finally { setInviting(false) }
   }
@@ -159,14 +157,15 @@ function GroupDetails() {
   }
 
   const getBalanceStatus = (memberBalance, memberId) => {
+    const currentUserId = Number(sessionStorage.getItem('zerosum_user_id'))
     if (memberBalance > 0) {
-      return memberId === group?.createdBy
+      return memberId === currentUserId
         ? 'You are owed'
         : 'Owed'
     }
 
     if (memberBalance < 0) {
-      return memberId === group?.createdBy
+      return memberId === currentUserId
         ? 'You owe'
         : 'Owes'
     }
@@ -581,7 +580,7 @@ function GroupDetails() {
         <form onSubmit={handleInvite} className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
           <div><h2 className="text-xl font-semibold text-slate-900">Add a participant</h2><p className="mt-1 text-sm text-slate-500">Add a named member to {group.name}.</p></div>
           {inviteError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{inviteError}</p>}
-          <label className="block text-sm text-slate-600">Participant name<input required maxLength="100" autoFocus value={inviteName} onChange={event => setInviteName(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2" /></label>
+          <label className="block text-sm text-slate-600">Registered account email<input required type="email" autoFocus value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2" /></label>
           <div className="flex justify-end gap-2"><button type="button" onClick={() => setShowInvite(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600">Cancel</button><button disabled={inviting} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{inviting ? 'Adding…' : 'Add member'}</button></div>
         </form>
       </div>}
