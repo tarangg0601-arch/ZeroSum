@@ -20,7 +20,7 @@ import {
   useState,
 } from 'react'
 
-const API_BASE_URL = 'http://localhost:8080/api'
+const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
 
 function Balances() {
   const [searchParams] = useSearchParams()
@@ -36,9 +36,14 @@ function Balances() {
 
   const [group, setGroup] = useState(null)
   const [settlement, setSettlement] = useState(null)
+  const [rawPaymentCount, setRawPaymentCount] = useState(0)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [simulation, setSimulation] = useState(null)
+  const [simulationError, setSimulationError] = useState('')
+  const [payment, setPayment] = useState({ fromUserId: '', toUserId: '', amount: '' })
+  const [simulating, setSimulating] = useState(false)
 
   useEffect(() => {
     async function loadSettlement() {
@@ -46,10 +51,11 @@ function Balances() {
         setLoading(true)
         setError('')
 
-        const [groupResponse, settlementResponse] =
+        const [groupResponse, settlementResponse, expensesResponse] =
           await Promise.all([
             fetch(`${API_BASE_URL}/groups/${groupId}`),
             fetch(`${API_BASE_URL}/groups/${groupId}/settlement`),
+            fetch(`${API_BASE_URL}/groups/${groupId}/expenses`),
           ])
 
         if (!groupResponse.ok) {
@@ -59,9 +65,12 @@ function Balances() {
         if (!settlementResponse.ok) {
           throw new Error('Failed to load settlement')
         }
+        if (!expensesResponse.ok) throw new Error('Failed to load expenses')
 
         const groupData = await groupResponse.json()
         const settlementData = await settlementResponse.json()
+        const expenses = await expensesResponse.json()
+        setRawPaymentCount(expenses.reduce((count, expense) => count + expense.shares.filter(share => share.userId !== expense.paidBy).length, 0))
 
         setGroup(groupData)
         setSettlement(settlementData)
@@ -78,8 +87,8 @@ function Balances() {
     loadSettlement()
   }, [groupId])
 
-  const balances = settlement?.balances || []
-  const transactions = settlement?.transactions || []
+  const balances = useMemo(() => settlement?.balances || [], [settlement])
+  const transactions = useMemo(() => settlement?.transactions || [], [settlement])
   const explanationSteps =
     settlement?.explanation?.steps || []
 
@@ -102,6 +111,36 @@ function Balances() {
   const activeBalances = balances.filter(
     (balance) => balance.balancePaise !== 0,
   )
+  const debtors = balances.filter(balance => balance.balancePaise < 0)
+  const creditors = balances.filter(balance => balance.balancePaise > 0)
+  const graphHeight = Math.max(140, Math.max(debtors.length, creditors.length) * 76 + 36)
+  const debtorY = new Map(debtors.map((balance, index) => [balance.userId, 34 + index * 76]))
+  const creditorY = new Map(creditors.map((balance, index) => [balance.userId, 34 + index * 76]))
+
+  const runSimulation = async (event) => {
+    event.preventDefault()
+    setSimulating(true)
+    setSimulationError('')
+    try {
+      const response = await fetch(`${API_BASE_URL}/groups/${groupId}/settlement/whatif`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromUserId: Number(payment.fromUserId),
+          toUserId: Number(payment.toUserId),
+          amountPaise: Math.round(Number(payment.amount) * 100),
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Unable to simulate payment')
+      setSimulation(data)
+    } catch (err) {
+      setSimulationError(err.message)
+      setSimulation(null)
+    } finally {
+      setSimulating(false)
+    }
+  }
 
   const formatRupees = (paise) => {
     const rupees = Math.abs(paise) / 100
@@ -286,6 +325,61 @@ function Balances() {
           }
         />
 
+      </section>
+
+      <section className="mb-6 grid gap-5 xl:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">Debt graph</p>
+          <h2 className="mt-2 font-semibold text-slate-900">Who pays whom</h2>
+          <p className="mt-1 text-sm text-slate-500">Raw expense debts reduced from {rawPaymentCount} to {transactions.length} planned payments.</p>
+          {transactions.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No debt edges. Everyone is settled.</p> : <div className="mt-4 overflow-x-auto">
+            <svg role="img" aria-labelledby="debt-graph-title debt-graph-description" viewBox={`0 0 600 ${graphHeight}`} className="min-w-[500px] w-full">
+              <title id="debt-graph-title">Optimized settlement debt graph</title>
+              <desc id="debt-graph-description">Arrows show who pays whom and the amount of each planned payment.</desc>
+              <defs><marker id="debt-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#10b981" /></marker></defs>
+              {transactions.map((item, index) => {
+                const y1 = debtorY.get(item.fromUserId) + 15
+                const y2 = creditorY.get(item.toUserId) + 15
+                return <g key={`${item.fromUserId}-${item.toUserId}-${index}`}>
+                  <path d={`M 188 ${y1} C 270 ${y1}, 330 ${y2}, 412 ${y2}`} fill="none" stroke="#10b981" strokeWidth="2" markerEnd="url(#debt-arrow)" />
+                  <text x="300" y={(y1 + y2) / 2 - 5} textAnchor="middle" className="fill-slate-700 text-[12px] font-semibold">{formatRupees(item.amountPaise)}</text>
+                </g>
+              })}
+              {debtors.map((balance, index) => <g key={balance.userId}>
+                <circle cx="172" cy={49 + index * 76} r="17" fill="#f1f5f9" />
+                <text x="172" y={53 + index * 76} textAnchor="middle" className="fill-slate-600 text-[10px] font-bold">{getInitials(balance.userName)}</text>
+                <text x="20" y={53 + index * 76} className="fill-slate-700 text-[12px]">{balance.userName}</text>
+              </g>)}
+              {creditors.map((balance, index) => <g key={balance.userId}>
+                <circle cx="428" cy={49 + index * 76} r="17" fill="#d1fae5" />
+                <text x="428" y={53 + index * 76} textAnchor="middle" className="fill-emerald-700 text-[10px] font-bold">{getInitials(balance.userName)}</text>
+                <text x="454" y={53 + index * 76} className="fill-slate-700 text-[12px]">{balance.userName}</text>
+              </g>)}
+            </svg>
+            <div className="flex justify-between px-4 text-[11px] font-medium uppercase tracking-wide text-slate-400"><span>Owes</span><span>Receives</span></div>
+          </div>}
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">What-if simulator</p>
+          <h2 className="mt-2 font-semibold text-slate-900">Preview a payment</h2>
+          <p className="mt-1 text-sm text-slate-500">Recalculates the plan in memory. It does not record a payment.</p>
+          <form onSubmit={runSimulation} className="mt-4 grid gap-3 sm:grid-cols-3">
+            <select required aria-label="Payer" value={payment.fromUserId} onChange={e => setPayment({ ...payment, fromUserId: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+              <option value="">Payer</option>{balances.filter(b => b.balancePaise < 0).map(b => <option key={b.userId} value={b.userId}>{b.userName}</option>)}
+            </select>
+            <select required aria-label="Recipient" value={payment.toUserId} onChange={e => setPayment({ ...payment, toUserId: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+              <option value="">Recipient</option>{balances.filter(b => b.balancePaise > 0).map(b => <option key={b.userId} value={b.userId}>{b.userName}</option>)}
+            </select>
+            <input required aria-label="Amount in rupees" type="number" min="0.01" step="0.01" placeholder="Amount ₹" value={payment.amount} onChange={e => setPayment({ ...payment, amount: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+            <button disabled={simulating} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{simulating ? 'Calculating…' : 'Simulate'}</button>
+          </form>
+          {simulationError && <p role="alert" className="mt-3 text-sm text-rose-600">{simulationError}</p>}
+          {simulation && <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+            <p className="text-sm font-semibold text-emerald-800">Preview: {simulation.transactions.length} payment{simulation.transactions.length === 1 ? '' : 's'} would remain</p>
+            <ul className="mt-2 space-y-1 text-sm text-emerald-900">{simulation.transactions.map((item, index) => <li key={`${item.fromUserId}-${item.toUserId}-${index}`}>{item.fromUserName} pays {item.toUserName} {formatRupees(item.amountPaise)}</li>)}</ul>
+          </div>}
+        </div>
       </section>
 
 
@@ -483,9 +577,6 @@ function Balances() {
 
               const negative =
                 balance.balancePaise < 0
-
-              const zero =
-                balance.balancePaise === 0
 
               let status = 'Settled'
 

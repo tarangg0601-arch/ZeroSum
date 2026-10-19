@@ -9,7 +9,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
-const API_BASE_URL = 'http://localhost:8080/api'
+const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
 
 // Temporary current user for MVP.
 // Authentication will replace this later.

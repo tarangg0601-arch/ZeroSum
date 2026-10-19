@@ -1,6 +1,7 @@
 package com.zerosum.zerosum.settlement;
 
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 import java.util.List;
 
@@ -28,5 +29,13 @@ public class SettlementController {
             @PathVariable Long groupId
     ) {
         return settlementService.getSettlement(groupId);
+    }
+
+    @PostMapping("/settlement/whatif")
+    public SettlementResponseDTO simulatePayment(
+            @PathVariable Long groupId,
+            @Valid @RequestBody WhatIfRequest request
+    ) {
+        return settlementService.simulatePayment(groupId, request);
     }
 }

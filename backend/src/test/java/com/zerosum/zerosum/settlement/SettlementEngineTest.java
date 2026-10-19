@@ -10,8 +10,38 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SettlementEngineTest {
+
+    @Test
+    void shouldReturnNoTransfersForEmptyOrTrivialBalances() {
+        SettlementEngine engine = new SettlementEngine();
+        assertTrue(engine.calculateSettlements(List.of()).isEmpty());
+        assertTrue(engine.calculateSettlements(List.of(new BalanceDTO(1L, "A", 0L))).isEmpty());
+    }
+
+    @Test
+    void shouldUseStableUserIdTieBreaks() {
+        SettlementEngine engine = new SettlementEngine();
+        var result = engine.calculateSettlements(List.of(
+                new BalanceDTO(3L, "C", -500L), new BalanceDTO(2L, "B", 500L),
+                new BalanceDTO(1L, "A", 500L), new BalanceDTO(4L, "D", -500L)));
+        assertEquals(List.of(1L, 2L), result.stream().map(SettlementTransactionDTO::toUserId).toList());
+        assertEquals(List.of(3L, 4L), result.stream().map(SettlementTransactionDTO::fromUserId).toList());
+    }
+
+    @Test
+    void shouldReconcileUnevenPaiseAcrossSeveralMembers() {
+        SettlementEngine engine = new SettlementEngine();
+        var balances = List.of(new BalanceDTO(1L, "A", 101L), new BalanceDTO(2L, "B", 1L),
+                new BalanceDTO(3L, "C", -33L), new BalanceDTO(4L, "D", -69L));
+        var result = engine.calculateSettlements(balances);
+        assertEquals(0L, result.stream().mapToLong(SettlementTransactionDTO::amountPaise).sum()
+                - balances.stream().filter(b -> b.balancePaise() > 0).mapToLong(BalanceDTO::balancePaise).sum());
+        assertEquals(0L, result.stream().mapToLong(t -> t.amountPaise()).sum()
+                - balances.stream().filter(b -> b.balancePaise() < 0).mapToLong(b -> -b.balancePaise()).sum());
+    }
 
     @Test
     void shouldCalculateExpectedSettlementsForFivePersonExample() {

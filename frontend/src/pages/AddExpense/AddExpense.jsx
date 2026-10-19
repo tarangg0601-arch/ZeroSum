@@ -24,7 +24,7 @@ import {
   useState,
 } from 'react'
 
-const API_BASE_URL = 'http://localhost:8080/api'
+const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
 
 const categories = [
   {
@@ -71,6 +71,8 @@ function AddExpense() {
   )
 
   const [selectedMembers, setSelectedMembers] = useState([])
+  const [splitType, setSplitType] = useState('equal')
+  const [splitValues, setSplitValues] = useState({})
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -195,6 +197,17 @@ function AddExpense() {
         expenseDate: date,
         paidBy: Number(paidBy),
         participantIds: selectedMembers.map(Number),
+        splitType,
+      }
+      if (splitType !== 'equal') {
+        payload.splits = selectedMembers.map((userId) => ({
+          userId: Number(userId),
+          value: splitType === 'percentage'
+            ? Math.round(Number(splitValues[userId] || 0) * 100)
+            : splitType === 'exact'
+              ? Math.round(Number(splitValues[userId] || 0) * 100)
+              : Math.round(Number(splitValues[userId] || 0)),
+        }))
       }
 
       const response = await fetch(
@@ -560,15 +573,23 @@ function AddExpense() {
 
                 <div>
 
-                  <h2 className="font-semibold text-slate-900">
-                    Split equally
-                  </h2>
+                  <h2 className="font-semibold text-slate-900">Split expense</h2>
 
                   <p className="mt-1 text-xs text-slate-400">
                     Select everyone who participated in this expense.
                   </p>
 
                 </div>
+
+                <label className="mb-4 block max-w-xs text-xs font-medium text-slate-600">
+                  Split type
+                  <select value={splitType} onChange={event => setSplitType(event.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
+                    <option value="equal">Equal</option>
+                    <option value="percentage">Percentage</option>
+                    <option value="exact">Exact amount</option>
+                    <option value="shares">Shares</option>
+                  </select>
+                </label>
 
                 <div className="flex gap-2">
 
@@ -650,6 +671,13 @@ function AddExpense() {
                 })}
 
               </div>
+
+              {splitType !== 'equal' && <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
+                {members.filter(member => selectedMembers.includes(member.userId)).map(member => <label key={member.userId} className="flex items-center justify-between gap-3 text-sm text-slate-600">
+                  <span>{member.name} {splitType === 'percentage' ? '(%)' : splitType === 'exact' ? '(₹)' : '(units)'}</span>
+                  <input type="number" min="0" step={splitType === 'shares' ? '1' : '0.01'} aria-label={`${splitType} for ${member.name}`} value={splitValues[member.userId] ?? ''} onChange={event => setSplitValues(current => ({ ...current, [member.userId]: event.target.value }))} className="w-28 rounded-lg border border-slate-200 px-3 py-2 text-right text-sm" />
+                </label>)}
+              </div>}
 
             </section>
 
@@ -734,19 +762,19 @@ function AddExpense() {
                 <div className="rounded-xl bg-emerald-50 p-4">
 
                   <p className="text-xs font-medium text-emerald-700">
-                    Equal share
+                    {splitType === 'equal' ? 'Equal share' : 'Selected participants'}
                   </p>
 
                   <p className="mt-1 text-2xl font-bold text-emerald-700">
-                    ₹
-                    {splitAmount.toLocaleString('en-IN', {
+                  {splitType === 'equal' ? '₹' : ''}
+                  {(splitType === 'equal' ? splitAmount : selectedMembers.reduce((sum, id) => sum + Number(splitValues[id] || 0), 0)).toLocaleString('en-IN', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
                   </p>
 
                   <p className="mt-1 text-xs text-emerald-600/70">
-                    Per participant
+                    {splitType === 'equal' ? 'Per participant' : splitType === 'percentage' ? 'Total percentage (must equal 100)' : splitType === 'exact' ? 'Allocated rupees (must equal expense total)' : 'Total share units'}
                   </p>
 
                 </div>
