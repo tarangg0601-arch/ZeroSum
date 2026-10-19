@@ -507,6 +507,10 @@ function GroupDetails() {
             <ArrowRight size={17} />
           </Link>
 
+          <Link to={`/groups/${group.id}/recurring`} className="inline-flex shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white px-5 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50">
+            Recurring expenses
+          </Link>
+
         </div>
 
       </section>

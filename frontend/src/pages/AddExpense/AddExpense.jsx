@@ -53,6 +53,11 @@ const categories = [
   },
 ]
 
+const modeCategories = {
+  hostel: ['Rent', 'Mess', 'Electricity', 'Groceries', 'Maintenance', 'Wi-Fi', 'Supplies'],
+  trip: ['Transport', 'Hotel', 'Food', 'Tickets', 'Activities', 'Other'],
+}
+
 function AddExpense() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -126,6 +131,8 @@ function AddExpense() {
   }, [groupId])
 
   const numericAmount = Number(amount) || 0
+  const availableCategories = (modeCategories[group?.groupType] || categories.map(item => item.name))
+    .map(name => categories.find(item => item.name === name) || { name, icon: MoreHorizontal })
 
   const splitAmount = useMemo(() => {
     if (selectedMembers.length === 0) {
@@ -531,7 +538,7 @@ function AddExpense() {
 
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
 
-                {categories.map((item) => {
+                {availableCategories.map((item) => {
 
                   const Icon = item.icon
                   const isSelected = category === item.name

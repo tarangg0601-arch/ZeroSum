@@ -8,9 +8,10 @@ ZeroSum is a React and Spring Boot expense sharing app for groups. It stores mon
 - Split expenses equally, by exact paise amounts, percentage, or share units. Percentage inputs are integer basis points (`10000` = `100%`); exact inputs are paise. Percentage and share allocations distribute leftover paise in participant order.
 - Calculate balances and optimized payments. The heap-based greedy method is deterministic and uses at most `n - 1` transfers; it is not guaranteed to find the globally minimum transfer count in every case.
 - Preview a hypothetical payment at `POST /api/groups/{groupId}/settlement/whatif`. This recalculates in memory and does not persist the simulation.
+- Manage daily, weekly, monthly, and yearly recurring rules at `/api/groups/{groupId}/recurring`; due expenses are generated once per rule/date by the scheduled worker.
 - Configure the browser API URL and backend CORS origins through environment variables.
 
-The database migration also defines tables for recurring rules, IOUs, and settlement history. Their user-facing workflows and APIs are not implemented yet. Authentication and deployed hosting are also not configured.
+The database migration also defines tables for IOUs and settlement history, but their user-facing workflows and APIs are not implemented yet. Authentication and deployed hosting are also not configured.
 
 ## Requirements
 
@@ -35,6 +36,8 @@ The database migration also defines tables for recurring rules, IOUs, and settle
 - `GET /api/groups/{groupId}/balances`
 - `GET /api/groups/{groupId}/settlement`
 - `POST /api/groups/{groupId}/settlement/whatif`
+- `GET/POST /api/groups/{groupId}/recurring`
+- `PATCH /api/groups/{groupId}/recurring/{ruleId}` with `{"active": false}` to pause or `true` to resume.
 - `GET /api/health`
 
 Expense create/update requests include `participantIds`; `splitType` is `equal`, `exact`, `percentage`, or `shares`. For non-equal splits, provide `splits: [{"userId": 1, "value": 2500}]`. `value` is paise for exact, basis points for percentage, and integer weight for shares.
@@ -46,6 +49,8 @@ What-if request example:
 ```
 
 The payer must currently have a debt and the recipient must currently be owed money. The amount cannot exceed either balance.
+
+Recurring rule creation accepts `description`, `amountPaise`, `category`, `frequency` (`DAILY`, `WEEKLY`, `MONTHLY`, or `YEARLY`), `nextRunDate`, and `paidBy`. Generated occurrences split equally among the group members on the due date. The worker catches up missed dates and uniquely keys generated expenses by recurring rule and expense date.
 
 ## Verification
 

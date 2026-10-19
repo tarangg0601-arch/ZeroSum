@@ -36,6 +36,10 @@ public class Expense {
     @Column(name = "is_recurring", nullable = false)
     private boolean recurring;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "recurring_rule_id")
+    private RecurringRule recurringRule;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -105,6 +109,10 @@ public class Expense {
     public void setRecurring(boolean recurring) {
         this.recurring = recurring;
     }
+
+    public RecurringRule getRecurringRule() { return recurringRule; }
+
+    public void setRecurringRule(RecurringRule recurringRule) { this.recurringRule = recurringRule; }
 
     public Instant getCreatedAt() {
         return createdAt;

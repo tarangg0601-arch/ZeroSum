@@ -7,6 +7,7 @@ import Groups from './pages/Groups/Groups'
 import GroupDetails from './pages/Group/GroupDetails'
 import AddExpense from './pages/AddExpense/AddExpense'
 import Balances from './pages/Balances/Balances'
+import Recurring from './pages/Recurring/Recurring'
 
 
 function App() {
@@ -46,6 +47,8 @@ function App() {
             path="/balances"
             element={<Balances />}
           />
+
+          <Route path="/groups/:groupId/recurring" element={<Recurring />} />
 
         </Route>
 
