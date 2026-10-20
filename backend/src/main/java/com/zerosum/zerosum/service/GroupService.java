@@ -14,6 +14,8 @@ import com.zerosum.zerosum.repository.GroupRepository;
 import com.zerosum.zerosum.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -54,7 +56,7 @@ public class GroupService {
 
         addMember(
                 savedGroup.getId(),
-                new AddGroupMemberRequest(creator.getId(), null)
+                new AddGroupMemberRequest(creator.getId(), null), creator.getId()
         );
 
         return getGroup(savedGroup.getId());
@@ -72,13 +74,16 @@ public class GroupService {
     @Transactional
     public GroupResponse updateGroup(
             Long groupId,
-            UpdateGroupRequest request
+            UpdateGroupRequest request,
+            Long actorId
     ) {
 
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Group not found")
                 );
+
+        requireOwner(group, actorId);
 
         group.setName(request.name());
         group.setGroupType(request.groupType());
@@ -89,12 +94,14 @@ public class GroupService {
     }
 
     @Transactional
-    public void deleteGroup(Long groupId) {
+    public void deleteGroup(Long groupId, Long actorId) {
 
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Group not found")
                 );
+
+        requireOwner(group, actorId);
 
         groupRepository.delete(group);
     }
@@ -102,13 +109,16 @@ public class GroupService {
     @Transactional
     public GroupMemberResponse addMember(
             Long groupId,
-            AddGroupMemberRequest request
+            AddGroupMemberRequest request,
+            Long actorId
     ) {
 
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Group not found")
                 );
+
+        requireOwner(group, actorId);
 
         if (request.userId() == null && (request.email() == null || request.email().isBlank())) {
             throw new IllegalArgumentException("Provide a registered user's ID or email");
@@ -201,5 +211,11 @@ public class GroupService {
                 .toString()
                 .substring(0, 8)
                 .toUpperCase();
+    }
+
+    private void requireOwner(Group group, Long actorId) {
+        if (!group.getCreatedBy().getId().equals(actorId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the group creator can manage members or group settings");
+        }
     }
 }

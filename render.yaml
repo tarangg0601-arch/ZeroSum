@@ -16,6 +16,22 @@ services:
         value: https://zerosum-frontend.onrender.com
       - key: APP_AUTH_TOKEN_SECRET
         sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_AUTH
+        value: "true"
+      - key: SMTP_STARTTLS
+        value: "true"
+      - key: EMAIL_FROM
+        sync: false
+      - key: APP_PUBLIC_BASE_URL
+        value: https://zerosum-frontend.onrender.com
   - type: web
     name: zerosum-frontend
     runtime: static

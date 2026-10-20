@@ -2,6 +2,7 @@ package com.zerosum.zerosum.security;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.zerosum.zerosum.repository.GroupMemberRepository;
+import com.zerosum.zerosum.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 
 @Configuration
 public class SecurityConfig {
+    @Bean TokenVersionFilter tokenVersionFilter(UserRepository users) { return new TokenVersionFilter(users); }
     @Bean GroupMembershipFilter groupMembershipFilter(GroupMemberRepository members) {
         return new GroupMembershipFilter(members);
     }
@@ -50,19 +52,27 @@ public class SecurityConfig {
         registration.setEnabled(false);
         return registration;
     }
+    @Bean FilterRegistrationBean<TokenVersionFilter> disableTokenVersionContainerFilter(TokenVersionFilter filter) {
+        FilterRegistrationBean<TokenVersionFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
 
     @Bean
-    SecurityFilterChain apiSecurity(HttpSecurity http, GroupMembershipFilter membershipFilter) throws Exception {
+    SecurityFilterChain apiSecurity(HttpSecurity http, GroupMembershipFilter membershipFilter, TokenVersionFilter tokenVersionFilter) throws Exception {
         return http
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verify-email",
+                                "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/claim-legacy-account",
+                                "/api/auth/complete-legacy-claim").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))
-                .addFilterAfter(membershipFilter, BearerTokenAuthenticationFilter.class)
+                .addFilterAfter(tokenVersionFilter, BearerTokenAuthenticationFilter.class)
+                .addFilterAfter(membershipFilter, TokenVersionFilter.class)
                 .build();
     }
 }

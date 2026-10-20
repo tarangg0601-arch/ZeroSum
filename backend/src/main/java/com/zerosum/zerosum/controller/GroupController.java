@@ -51,29 +51,32 @@ public class GroupController {
     // Update group
     @PutMapping("/{groupId}")
     public GroupResponse updateGroup(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable Long groupId,
             @Valid @RequestBody UpdateGroupRequest request
     ) {
-        return groupService.updateGroup(groupId, request);
+        return groupService.updateGroup(groupId, request, Long.valueOf(jwt.getSubject()));
     }
 
     // Delete group
     @DeleteMapping("/{groupId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteGroup(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable Long groupId
     ) {
-        groupService.deleteGroup(groupId);
+        groupService.deleteGroup(groupId, Long.valueOf(jwt.getSubject()));
     }
 
     // Add member
     @PostMapping("/{groupId}/members")
     @ResponseStatus(HttpStatus.CREATED)
     public GroupMemberResponse addMember(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable Long groupId,
             @Valid @RequestBody AddGroupMemberRequest request
     ) {
-        return groupService.addMember(groupId, request);
+        return groupService.addMember(groupId, request, Long.valueOf(jwt.getSubject()));
     }
 
     // Get group members

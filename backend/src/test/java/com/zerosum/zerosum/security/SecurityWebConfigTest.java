@@ -4,6 +4,7 @@ import com.zerosum.zerosum.controller.AuthController;
 import com.zerosum.zerosum.dto.AuthResponse;
 import com.zerosum.zerosum.dto.LoginRequest;
 import com.zerosum.zerosum.repository.GroupMemberRepository;
+import com.zerosum.zerosum.repository.UserRepository;
 import com.zerosum.zerosum.service.AuthService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,11 +28,12 @@ class SecurityWebConfigTest {
     @Autowired MockMvc http;
     @MockitoBean AuthService authService;
     @MockitoBean GroupMemberRepository groupMembers;
+    @MockitoBean UserRepository users;
 
     @Test
     void requiresBearerAuthenticationForApiRoutesButAllowsLogin() throws Exception {
         http.perform(get("/api/users/me")).andExpect(status().isUnauthorized());
-        when(authService.login(any(LoginRequest.class))).thenReturn(new AuthResponse(1L, "A", "a@example.test", "signed"));
+        when(authService.login(any(LoginRequest.class), any())).thenReturn(new AuthResponse(1L, "A", "a@example.test", "signed"));
         http.perform(post("/api/auth/login").contentType("application/json")
                 .content("{\"email\":\"a@example.test\",\"password\":\"password\"}"))
                 .andExpect(status().isOk());

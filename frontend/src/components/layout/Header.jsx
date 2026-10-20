@@ -1,6 +1,15 @@
 import { Bell, Plus, Search } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
+const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
+
+async function signOut() {
+  try { await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST' }) } catch { /* clear the local bearer regardless */ }
+  sessionStorage.removeItem('zerosum_token')
+  sessionStorage.removeItem('zerosum_user_id')
+  window.location.assign('/login')
+}
+
 function Header() {
   return (
     <header className="flex h-20 items-center justify-between border-b border-slate-200/80 bg-[#F6F8F7] px-8">
@@ -22,7 +31,7 @@ function Header() {
       {/* Actions */}
       <div className="flex items-center gap-3">
 
-        <button type="button" onClick={() => { sessionStorage.removeItem('zerosum_token'); sessionStorage.removeItem('zerosum_user_id'); window.location.assign('/login') }} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600">Sign out</button>
+        <button type="button" onClick={signOut} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600">Sign out</button>
 
         {/* Notifications */}
         <button
