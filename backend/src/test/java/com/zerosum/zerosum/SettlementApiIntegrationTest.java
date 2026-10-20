@@ -51,7 +51,8 @@ class SettlementApiIntegrationTest {
 
     @Test
     void migratesAndRunsGroupExpenseWhatIfAndPaymentJourney() throws Exception {
-        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("select to_regclass('auth_email_attempts') is not null", Boolean.class)).isTrue();
         http.perform(get("/api/health")).andExpect(status().isOk());
         http.perform(get("/api/groups")).andExpect(status().isUnauthorized());
         Long creator = register("Creator", "creator@example.test");

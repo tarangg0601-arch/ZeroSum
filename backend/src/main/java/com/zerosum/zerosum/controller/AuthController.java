@@ -34,23 +34,31 @@ public class AuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public ActionResponse register(@Valid @RequestBody RegisterRequest request) { return auth.register(request); }
+    public ActionResponse register(@Valid @RequestBody RegisterRequest request, HttpServletRequest servletRequest) {
+        return auth.register(request, clientAddress(servletRequest));
+    }
 
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
+        return auth.login(request, clientAddress(servletRequest));
+    }
+
+    private String clientAddress(HttpServletRequest servletRequest) {
         String clientIp = servletRequest.getRemoteAddr();
         if (trustRenderClientIp) {
             String forwardedIp = servletRequest.getHeader("CF-Connecting-IP");
             if (TrustedClientAddress.isIpLiteral(forwardedIp)) clientIp = forwardedIp.trim();
         }
-        return auth.login(request, clientIp);
+        return clientIp;
     }
 
     @PostMapping("/verify-email")
     public ActionResponse verifyEmail(@Valid @RequestBody TokenRequest request) { return auth.verifyEmail(request.token()); }
 
     @PostMapping("/forgot-password")
-    public ActionResponse forgotPassword(@Valid @RequestBody EmailRequest request) { return auth.requestPasswordReset(request.email()); }
+    public ActionResponse forgotPassword(@Valid @RequestBody EmailRequest request, HttpServletRequest servletRequest) {
+        return auth.requestPasswordReset(request.email(), clientAddress(servletRequest));
+    }
 
     @PostMapping("/reset-password")
     public ActionResponse resetPassword(@Valid @RequestBody PasswordTokenRequest request) {
@@ -58,7 +66,9 @@ public class AuthController {
     }
 
     @PostMapping("/claim-legacy-account")
-    public ActionResponse claimLegacyAccount(@Valid @RequestBody EmailRequest request) { return auth.claimLegacyAccount(request.email()); }
+    public ActionResponse claimLegacyAccount(@Valid @RequestBody EmailRequest request, HttpServletRequest servletRequest) {
+        return auth.claimLegacyAccount(request.email(), clientAddress(servletRequest));
+    }
 
     @PostMapping("/complete-legacy-claim")
     public ActionResponse completeLegacyClaim(@Valid @RequestBody PasswordTokenRequest request) {

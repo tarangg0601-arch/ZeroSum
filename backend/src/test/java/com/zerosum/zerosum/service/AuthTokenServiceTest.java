@@ -15,6 +15,16 @@ import static org.mockito.Mockito.*;
 
 class AuthTokenServiceTest {
     @Test
+    void rejectsNonHttpsPublicOriginsOutsideLocalDevelopment() {
+        assertThrows(IllegalStateException.class, () -> new AuthTokenService(
+                mock(AuthTokenRepository.class), mock(EmailSender.class), "http://app.example.test"));
+        assertThrows(IllegalStateException.class, () -> new AuthTokenService(
+                mock(AuthTokenRepository.class), mock(EmailSender.class), "https://app.example.test/reset?next=bad"));
+        assertDoesNotThrow(() -> new AuthTokenService(
+                mock(AuthTokenRepository.class), mock(EmailSender.class), "http://localhost:5173"));
+    }
+
+    @Test
     void emailsRawTokenButPersistsOnlyHashAndReplacesPriorActiveToken() {
         AuthTokenRepository repository = mock(AuthTokenRepository.class);
         EmailSender sender = mock(EmailSender.class);

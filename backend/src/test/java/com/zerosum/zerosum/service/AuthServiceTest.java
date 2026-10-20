@@ -39,14 +39,16 @@ class AuthServiceTest {
         var encoder = mock(JwtEncoder.class);
         var tokenService = mock(AuthTokenService.class);
         var limiter = mock(LoginRateLimiter.class);
-        var service = new AuthService(users, passwords, encoder, tokenService, limiter);
+        var emailLimiter = mock(AuthEmailRateLimiter.class);
+        var service = new AuthService(users, passwords, encoder, tokenService, limiter, emailLimiter);
+        when(emailLimiter.allow("register", "person@example.test", "127.0.0.1")).thenReturn(true);
         when(users.findByEmailIgnoreCase("person@example.test")).thenReturn(Optional.empty());
         when(users.save(any(User.class))).thenAnswer(invocation -> {
             User user = invocation.getArgument(0);
             ReflectionTestUtils.setField(user, "id", 42L);
             return user;
         });
-        assertNotNull(service.register(new RegisterRequest("Person", " Person@Example.Test ", "a-long-test-password-123")).message());
+        assertNotNull(service.register(new RegisterRequest("Person", " Person@Example.Test ", "a-long-test-password-123"), "127.0.0.1").message());
         verify(users).save(argThat(user -> user.getPasswordHash() != null
                 && !user.getPasswordHash().equals("a-long-test-password-123")
                 && passwords.matches("a-long-test-password-123", user.getPasswordHash())
@@ -67,7 +69,7 @@ class AuthServiceTest {
         var users = mock(UserRepository.class);
         var passwords = Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8();
         var limiter = mock(LoginRateLimiter.class);
-        var service = new AuthService(users, passwords, mock(JwtEncoder.class), mock(AuthTokenService.class), limiter);
+        var service = new AuthService(users, passwords, mock(JwtEncoder.class), mock(AuthTokenService.class), limiter, mock(AuthEmailRateLimiter.class));
         when(limiter.bucket("person@example.test", "127.0.0.1")).thenReturn("hashed-bucket");
         when(limiter.isBlocked("hashed-bucket")).thenReturn(false, false, false, false, false, true);
         when(users.findByEmailIgnoreCase("person@example.test")).thenReturn(Optional.of(account(passwords, true)));

@@ -30,19 +30,23 @@ public class AuthService {
     private final JwtEncoder tokens;
     private final AuthTokenService authTokens;
     private final LoginRateLimiter loginRateLimiter;
+    private final AuthEmailRateLimiter emailRateLimiter;
 
     public AuthService(UserRepository users, PasswordEncoder passwords, JwtEncoder tokens,
-                       AuthTokenService authTokens, LoginRateLimiter loginRateLimiter) {
+                       AuthTokenService authTokens, LoginRateLimiter loginRateLimiter,
+                       AuthEmailRateLimiter emailRateLimiter) {
         this.users = users;
         this.passwords = passwords;
         this.tokens = tokens;
         this.authTokens = authTokens;
         this.loginRateLimiter = loginRateLimiter;
+        this.emailRateLimiter = emailRateLimiter;
     }
 
     @Transactional
-    public ActionResponse register(RegisterRequest request) {
+    public ActionResponse register(RegisterRequest request, String clientAddress) {
         String email = normalizeEmail(request.email());
+        if (!emailRateLimiter.allow("register", email, clientAddress)) return new ActionResponse(GENERIC_ACCOUNT_MESSAGE);
         User existing = users.findByEmailIgnoreCase(email).orElse(null);
         if (existing != null) {
             if (existing.getPasswordHash() == null) authTokens.send(existing, AuthToken.Purpose.LEGACY_CLAIM);
@@ -84,8 +88,10 @@ public class AuthService {
     }
 
     @Transactional
-    public ActionResponse requestPasswordReset(String email) {
-        users.findByEmailIgnoreCase(normalizeEmail(email))
+    public ActionResponse requestPasswordReset(String email, String clientAddress) {
+        String normalizedEmail = normalizeEmail(email);
+        if (!emailRateLimiter.allow("password-reset", normalizedEmail, clientAddress)) return new ActionResponse(GENERIC_ACCOUNT_MESSAGE);
+        users.findByEmailIgnoreCase(normalizedEmail)
                 .filter(User::isEmailVerified)
                 .ifPresent(user -> authTokens.send(user, AuthToken.Purpose.PASSWORD_RESET));
         return new ActionResponse(GENERIC_ACCOUNT_MESSAGE);
@@ -101,8 +107,10 @@ public class AuthService {
     }
 
     @Transactional
-    public ActionResponse claimLegacyAccount(String email) {
-        users.findByEmailIgnoreCase(normalizeEmail(email))
+    public ActionResponse claimLegacyAccount(String email, String clientAddress) {
+        String normalizedEmail = normalizeEmail(email);
+        if (!emailRateLimiter.allow("legacy-claim", normalizedEmail, clientAddress)) return new ActionResponse(GENERIC_ACCOUNT_MESSAGE);
+        users.findByEmailIgnoreCase(normalizedEmail)
                 .filter(user -> user.getPasswordHash() == null)
                 .ifPresent(user -> authTokens.send(user, AuthToken.Purpose.LEGACY_CLAIM));
         return new ActionResponse(GENERIC_ACCOUNT_MESSAGE);

@@ -15,6 +15,8 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.net.URI;
+import java.util.Locale;
 
 @Service
 public class AuthTokenService {
@@ -27,7 +29,7 @@ public class AuthTokenService {
                             @Value("${app.auth.email.public-base-url:http://localhost:5173}") String publicBaseUrl) {
         this.tokens = tokens;
         this.email = email;
-        this.publicBaseUrl = publicBaseUrl.replaceAll("/+$", "");
+        this.publicBaseUrl = validatePublicBaseUrl(publicBaseUrl);
     }
 
     @Transactional
@@ -78,6 +80,24 @@ public class AuthTokenService {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
             return java.util.HexFormat.of().formatHex(digest);
         } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+    }
+
+    private static String validatePublicBaseUrl(String value) {
+        URI uri;
+        try {
+            uri = URI.create(value.trim());
+        } catch (RuntimeException invalid) {
+            throw new IllegalStateException("APP_PUBLIC_BASE_URL must be an HTTPS origin", invalid);
+        }
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT).replace("[", "").replace("]", "");
+        boolean localHttp = scheme.equals("http") && (host.equals("localhost") || host.equals("127.0.0.1") || host.equals("::1"));
+        boolean validOrigin = uri.getHost() != null && uri.getUserInfo() == null && uri.getQuery() == null
+                && uri.getFragment() == null && (uri.getPath().isEmpty() || uri.getPath().equals("/"));
+        if (!validOrigin || (!scheme.equals("https") && !localHttp)) {
+            throw new IllegalStateException("APP_PUBLIC_BASE_URL must be an HTTPS origin (HTTP is allowed only for localhost)");
+        }
+        return uri.toString().replaceAll("/+$", "");
     }
 
     private static ResponseStatusException invalidToken() {

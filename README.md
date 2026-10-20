@@ -15,7 +15,7 @@ ZeroSum is a React and Spring Boot expense sharing app for groups. It stores mon
 - View date-filtered category spending insights and record completed settlement payments; completed payments adjust future balances and appear in payment history.
 - Configure the browser API URL and backend CORS origins through environment variables.
 
-SMTP delivery and deployed hosting require configuration and have not been verified here. Payments marked complete represent user-confirmed transfers; the app does not verify bank transactions.
+Email delivery and deployed hosting require provider and hosting configuration and have not been verified here. Payments marked complete represent user-confirmed transfers; the app does not verify bank transactions.
 
 ## Requirements
 
@@ -30,7 +30,7 @@ SMTP delivery and deployed hosting require configuration and have not been verif
 2. Start the backend from `backend/` with `./mvnw spring-boot:run` (Windows: `mvnw.cmd spring-boot:run`). The API listens on port `8080` by default; `PORT` can override it.
 3. Start the frontend from `frontend/` with `npm ci` and `npm run dev`. `VITE_API_BASE_URL` is the backend origin, without `/api`; it defaults to `http://localhost:8080`.
 4. Set `APP_CORS_ALLOWED_ORIGINS` as a comma-separated list of browser origins when hosting the API. The default is `http://localhost:5173`.
-5. Configure email delivery with `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_AUTH`, `EMAIL_FROM`, and `APP_PUBLIC_BASE_URL`. SMTP STARTTLS is required and server identity is checked. Use a provider sandbox for local testing and never put credentials in source control.
+5. Configure email delivery with `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM`, and `APP_PUBLIC_BASE_URL`, or choose `EMAIL_PROVIDER=smtp` and configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and `SMTP_AUTH`. SMTP STARTTLS and server identity checks are required. Keep provider keys in environment variables and never put credentials in source control. Email requests are limited to three per email, client address, and action per hour; bucket identifiers are SHA-256 hashes.
 
 ## API overview
 
@@ -77,8 +77,8 @@ Recurring rule creation accepts `description`, `amountPaise`, `category`, `frequ
 - Frontend production build: `cd frontend && npm ci && npm run build`.
 - Frontend lint: `cd frontend && npm run lint`.
 - Frontend split-input tests: `cd frontend && npm test`.
-- Latest local verification (2026-10-20): backend **28 passed, 0 skipped** including three PostgreSQL integration tests; frontend **13 passed**; lint and production build passed; `npm audit` reported **0 vulnerabilities**. Integration tests mock SMTP and do not verify real email delivery. Re-run these checks after final production values are configured; see [DEPLOYMENT_SECURITY.md](DEPLOYMENT_SECURITY.md).
+- Latest local verification (2026-10-20): backend **35 passed, 0 skipped**, including three PostgreSQL integration tests; frontend **13 passed**; lint and production build passed; `npm audit` reported **0 vulnerabilities**. Integration tests mock email and do not verify real provider delivery. Re-run these checks after final production values are configured; see [DEPLOYMENT_SECURITY.md](DEPLOYMENT_SECURITY.md).
 
 ## Deployment readiness
 
-`backend/Dockerfile` and `render.yaml` describe a Render API and static frontend, but do not provision a database. The blueprint currently uses Render's free API plan, which is unsuitable for production and blocks outbound SMTP on the port used here. Configure a paid API service and a dedicated paid PostgreSQL database, separate runtime and Flyway credentials, `APP_CORS_ALLOWED_ORIGINS`, `APP_AUTH_TOKEN_SECRET`, SMTP variables, `EMAIL_FROM`, and HTTPS `APP_PUBLIC_BASE_URL` in the host's secret/configuration store. Verify real email delivery, trusted proxy IP handling, account recovery, database backup/restore, and monitoring before deployment. No provider credentials were present and email delivery has not been tested. See [DEPLOYMENT_SECURITY.md](DEPLOYMENT_SECURITY.md) for verified items and outstanding release gates. Deployment has not been performed and the app is not declared production-ready.
+`backend/Dockerfile` and `render.yaml` describe a Render API and static frontend, but do not provision a database. The blueprint selects the Resend HTTPS API adapter to avoid SMTP egress restrictions on Render's free service tier. Configure `RESEND_API_KEY` and a verified `EMAIL_FROM` in the host's secret store; no provider credentials were present and real email delivery has not been tested. Configure a paid API service and dedicated paid PostgreSQL database, separate runtime and Flyway credentials, `APP_CORS_ALLOWED_ORIGINS`, `APP_AUTH_TOKEN_SECRET`, and HTTPS `APP_PUBLIC_BASE_URL`. The static site blueprint now includes CSP and browser security headers; verify the headers and API origin against the actual hosted domains. Verify real email delivery, trusted proxy IP handling, account recovery, database backup/restore, and monitoring before deployment. See [DEPLOYMENT_SECURITY.md](DEPLOYMENT_SECURITY.md) for verified items and outstanding release gates. Deployment has not been performed and the app is not declared production-ready.
