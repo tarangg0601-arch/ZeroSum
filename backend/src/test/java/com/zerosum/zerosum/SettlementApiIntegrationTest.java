@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
 @TestPropertySource(properties = "app.auth.token-secret=integration-only-test-key-with-more-than-32-bytes")
@@ -67,6 +67,18 @@ class SettlementApiIntegrationTest {
         perform(HttpMethod.POST, "/api/groups/" + group + "/expenses", Map.of("description", "Train", "amountPaise", 1000,
                 "category", "travel", "expenseDate", "2026-10-19", "paidBy", creator, "participantIds", List.of(creator, member), "splitType", "equal"), 201);
 
+        var balances = perform(HttpMethod.GET, "/api/groups/" + group + "/balances", null, 200);
+        assertThat(balances).hasSize(2);
+        assertThat(List.of(balances.get(0).path("userId").asLong(), balances.get(1).path("userId").asLong()))
+                .containsExactlyInAnyOrder(creator, member);
+        assertThat(List.of(balances.get(0).path("balancePaise").asLong(), balances.get(1).path("balancePaise").asLong()))
+                .containsExactlyInAnyOrder(500L, -500L);
+        var optimized = perform(HttpMethod.GET, "/api/groups/" + group + "/settlement", null, 200);
+        assertThat(optimized.path("transactions")).hasSize(1);
+        assertThat(optimized.path("transactions").get(0).path("fromUserId").asLong()).isEqualTo(member);
+        assertThat(optimized.path("transactions").get(0).path("toUserId").asLong()).isEqualTo(creator);
+        assertThat(optimized.path("transactions").get(0).path("amountPaise").asLong()).isEqualTo(500);
+
         int before = jdbc.queryForObject("select count(*) from expenses where group_id = ?", Integer.class, group);
         var preview = perform(HttpMethod.POST, "/api/groups/" + group + "/settlement/whatif", Map.of("expense", Map.of(
                 "description", "Hypothetical hotel", "amountPaise", 10000, "category", "travel", "expenseDate", "2026-10-19",
@@ -75,9 +87,13 @@ class SettlementApiIntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from expenses where group_id = ?", Integer.class, group)).isEqualTo(before);
 
         perform(HttpMethod.POST, "/api/groups/" + group + "/settlement/payments", Map.of("fromUserId", member, "toUserId", creator, "amountPaise", 500), 201);
-        String history = http.perform(request(HttpMethod.GET, "/api/groups/" + group + "/settlement/history")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        assertThat(objectMapper.readTree(history)).hasSize(1);
+        var history = perform(HttpMethod.GET, "/api/groups/" + group + "/settlement/history", null, 200);
+        assertThat(history).hasSize(1);
         assertThat(jdbc.queryForObject("select count(*) from expenses where group_id = ?", Integer.class, group)).isEqualTo(before);
+        var afterPayment = perform(HttpMethod.GET, "/api/groups/" + group + "/settlement", null, 200);
+        assertThat(afterPayment.path("transactions")).isEmpty();
+        assertThat(List.of(afterPayment.path("balances").get(0).path("balancePaise").asLong(),
+                afterPayment.path("balances").get(1).path("balancePaise").asLong())).containsExactly(0L, 0L);
     }
 
     private Long post(String path, Map<String, ?> body, String idKey) {

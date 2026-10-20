@@ -13,6 +13,7 @@ import com.zerosum.zerosum.repository.GroupRepository;
 import com.zerosum.zerosum.repository.RecurringRuleRepository;
 import com.zerosum.zerosum.repository.UserRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -31,6 +32,7 @@ public class RecurringExpenseService {
     private final UserRepository userRepository;
     private final Clock clock;
 
+    @Autowired
     public RecurringExpenseService(RecurringRuleRepository ruleRepository, ExpenseRepository expenseRepository,
             ExpenseShareRepository shareRepository, GroupRepository groupRepository,
             GroupMemberRepository memberRepository, UserRepository userRepository) {
