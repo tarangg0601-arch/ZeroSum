@@ -18,12 +18,19 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Value;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
     private final AuthService auth;
-    public AuthController(AuthService auth) { this.auth = auth; }
+    private final boolean trustRenderClientIp;
+
+    public AuthController(AuthService auth,
+                          @Value("${app.auth.trust-render-client-ip:false}") boolean trustRenderClientIp) {
+        this.auth = auth;
+        this.trustRenderClientIp = trustRenderClientIp;
+    }
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.ACCEPTED)
@@ -31,7 +38,12 @@ public class AuthController {
 
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
-        return auth.login(request, servletRequest.getRemoteAddr());
+        String clientIp = servletRequest.getRemoteAddr();
+        if (trustRenderClientIp) {
+            String forwardedIp = servletRequest.getHeader("CF-Connecting-IP");
+            if (TrustedClientAddress.isIpLiteral(forwardedIp)) clientIp = forwardedIp.trim();
+        }
+        return auth.login(request, clientIp);
     }
 
     @PostMapping("/verify-email")

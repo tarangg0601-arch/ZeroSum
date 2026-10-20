@@ -68,6 +68,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verify-email",
                                 "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/claim-legacy-account",
                                 "/api/auth/complete-legacy-claim").permitAll()
+                        .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))

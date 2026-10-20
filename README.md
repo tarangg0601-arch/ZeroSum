@@ -26,11 +26,11 @@ SMTP delivery and deployed hosting require configuration and have not been verif
 
 ## Run locally
 
-1. Create an empty local PostgreSQL database and set `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` for the backend. Flyway applies the schema migrations at startup. Set `APP_AUTH_TOKEN_SECRET` to a random value of at least 32 bytes. Do not point local development at a shared database.
+1. Create an empty local PostgreSQL database and set `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` for the backend. Flyway applies the schema migrations at startup. For separate migration credentials, set `FLYWAY_DB_USERNAME` and `FLYWAY_DB_PASSWORD`; otherwise Flyway uses the runtime DB credentials. Set `APP_AUTH_TOKEN_SECRET` to a random value of at least 32 bytes. Do not point local development at a shared database.
 2. Start the backend from `backend/` with `./mvnw spring-boot:run` (Windows: `mvnw.cmd spring-boot:run`). The API listens on port `8080` by default; `PORT` can override it.
 3. Start the frontend from `frontend/` with `npm ci` and `npm run dev`. `VITE_API_BASE_URL` is the backend origin, without `/api`; it defaults to `http://localhost:8080`.
 4. Set `APP_CORS_ALLOWED_ORIGINS` as a comma-separated list of browser origins when hosting the API. The default is `http://localhost:5173`.
-5. Configure email delivery with `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_AUTH`, `SMTP_STARTTLS`, `EMAIL_FROM`, and `APP_PUBLIC_BASE_URL`. Use a provider sandbox for local testing and never put credentials in source control.
+5. Configure email delivery with `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_AUTH`, `EMAIL_FROM`, and `APP_PUBLIC_BASE_URL`. SMTP STARTTLS is required and server identity is checked. Use a provider sandbox for local testing and never put credentials in source control.
 
 ## API overview
 
@@ -77,7 +77,8 @@ Recurring rule creation accepts `description`, `amountPaise`, `category`, `frequ
 - Frontend production build: `cd frontend && npm ci && npm run build`.
 - Frontend lint: `cd frontend && npm run lint`.
 - Frontend split-input tests: `cd frontend && npm test`.
+- Latest local verification (2026-10-20): backend **28 passed, 0 skipped** including three PostgreSQL integration tests; frontend **13 passed**; lint and production build passed; `npm audit` reported **0 vulnerabilities**. Integration tests mock SMTP and do not verify real email delivery. Re-run these checks after final production values are configured; see [DEPLOYMENT_SECURITY.md](DEPLOYMENT_SECURITY.md).
 
 ## Deployment readiness
 
-`backend/Dockerfile` and `render.yaml` prepare a Render API and static frontend. Configure a dedicated PostgreSQL database, `APP_CORS_ALLOWED_ORIGINS`, `APP_AUTH_TOKEN_SECRET`, SMTP variables, `EMAIL_FROM`, and the HTTPS `APP_PUBLIC_BASE_URL` in the host's secret/configuration store. Verify actual email delivery, proxy IP handling, account recovery, database backup/restore, and monitoring before deployment. See [DEPLOYMENT_SECURITY.md](DEPLOYMENT_SECURITY.md). Deployment has not been performed and the app is not declared production-ready.
+`backend/Dockerfile` and `render.yaml` describe a Render API and static frontend, but do not provision a database. The blueprint currently uses Render's free API plan, which is unsuitable for production and blocks outbound SMTP on the port used here. Configure a paid API service and a dedicated paid PostgreSQL database, separate runtime and Flyway credentials, `APP_CORS_ALLOWED_ORIGINS`, `APP_AUTH_TOKEN_SECRET`, SMTP variables, `EMAIL_FROM`, and HTTPS `APP_PUBLIC_BASE_URL` in the host's secret/configuration store. Verify real email delivery, trusted proxy IP handling, account recovery, database backup/restore, and monitoring before deployment. No provider credentials were present and email delivery has not been tested. See [DEPLOYMENT_SECURITY.md](DEPLOYMENT_SECURITY.md) for verified items and outstanding release gates. Deployment has not been performed and the app is not declared production-ready.

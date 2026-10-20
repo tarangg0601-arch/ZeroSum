@@ -39,6 +39,8 @@ class SettlementApiIntegrationTest {
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
+        properties.add("spring.flyway.user", POSTGRES::getUsername);
+        properties.add("spring.flyway.password", POSTGRES::getPassword);
     }
 
     @Autowired MockMvc http;
@@ -50,6 +52,7 @@ class SettlementApiIntegrationTest {
     @Test
     void migratesAndRunsGroupExpenseWhatIfAndPaymentJourney() throws Exception {
         assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(3);
+        http.perform(get("/api/health")).andExpect(status().isOk());
         http.perform(get("/api/groups")).andExpect(status().isUnauthorized());
         Long creator = register("Creator", "creator@example.test");
         String creatorToken = activeToken;
