@@ -11,5 +11,6 @@ public record RecurringRuleResponse(
         String category,
         String frequency,
         LocalDate nextRunDate,
+        String anchorType,
         boolean active
 ) {}

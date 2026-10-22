@@ -7,4 +7,6 @@ import java.util.List;
 public interface SettlementRepository extends JpaRepository<Settlement, Long> {
     List<Settlement> findByGroupIdAndStatusOrderBySettledAtDesc(Long groupId, String status);
     List<Settlement> findByGroupIdOrderBySettledAtDesc(Long groupId);
+    boolean existsByGroupIdAndStatus(Long groupId, String status);
+
 }

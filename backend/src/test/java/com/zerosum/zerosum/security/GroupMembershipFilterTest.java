@@ -51,4 +51,55 @@ class GroupMembershipFilterTest {
 
         verify(chain).doFilter(request, response);
     }
+
+    @Test
+    void decodesEncodedGroupIdBeforeCheckingMembership() throws Exception {
+        GroupMemberRepository members = mock(GroupMemberRepository.class);
+        when(members.existsByGroupIdAndUserId(20L, 7L)).thenReturn(true);
+        GroupMembershipFilter filter = new GroupMembershipFilter(members);
+        Instant now = Instant.now();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(Jwt.withTokenValue("token")
+                .header("alg", "HS256").subject("7").issuedAt(now).expiresAt(now.plusSeconds(60)).build(), List.of()));
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/groups/%32%30/settlement");
+        request.setRequestURI("/api/groups/%32%30/settlement");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(request, response, chain);
+
+        verify(members).existsByGroupIdAndUserId(20L, 7L);
+        verify(chain).doFilter(request, response);
+    }
+
+    @Test
+    void repeatedlyDecodesGroupIdBeforeCheckingMembership() throws Exception {
+        GroupMemberRepository members = mock(GroupMemberRepository.class);
+        when(members.existsByGroupIdAndUserId(20L, 7L)).thenReturn(false);
+        GroupMembershipFilter filter = new GroupMembershipFilter(members);
+        Instant now = Instant.now();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(Jwt.withTokenValue("token")
+                .header("alg", "HS256").subject("7").issuedAt(now).expiresAt(now.plusSeconds(60)).build(), List.of()));
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/groups/%2532%2530/settlement");
+        request.setRequestURI("/api/groups/%2532%2530/settlement");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, mock(FilterChain.class));
+
+        verify(members).existsByGroupIdAndUserId(20L, 7L);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    void rejectsGroupIdsThatCannotBeParsedWithoutSkippingAuthorization() throws Exception {
+        GroupMembershipFilter filter = new GroupMembershipFilter(mock(GroupMemberRepository.class));
+        Instant now = Instant.now();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(Jwt.withTokenValue("token")
+                .header("alg", "HS256").subject("7").issuedAt(now).expiresAt(now.plusSeconds(60)).build(), List.of()));
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/groups/999999999999999999999999/settlement");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, mock(FilterChain.class));
+
+        assertEquals(404, response.getStatus());
+    }
 }

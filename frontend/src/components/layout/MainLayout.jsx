@@ -8,11 +8,11 @@ function MainLayout() {
 
       <Sidebar />
 
-      <div className="ml-64 min-h-screen">
+      <div className="min-h-screen lg:ml-64">
 
         <Header />
 
-        <main className="px-8 py-8">
+        <main className="px-4 py-6 sm:px-8 sm:py-8">
           <Outlet />
         </main>
 

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { rupeesToPaise } from '../../utils/currency.js'
-
-const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
+import { apiRequest } from '../../api/client.js'
 
 function Ious() {
   const { groupId } = useParams()
@@ -13,11 +12,9 @@ function Ious() {
   const [busy, setBusy] = useState(false)
 
   const reload = useCallback(async () => {
-    const [groupResponse, iouResponse] = await Promise.all([fetch(`${API_BASE_URL}/groups/${groupId}`), fetch(`${API_BASE_URL}/groups/${groupId}/ious`)])
-    if (!groupResponse.ok || !iouResponse.ok) throw new Error('Unable to load IOUs.')
-    const groupData = await groupResponse.json()
+    const [groupData, iouData] = await Promise.all([apiRequest(`/groups/${groupId}`), apiRequest(`/groups/${groupId}/ious`)])
     setGroup(groupData)
-    setIous(await iouResponse.json())
+    setIous(iouData)
     setForm(current => ({ ...current, fromUserId: current.fromUserId || String(groupData.members?.[0]?.userId || ''), toUserId: current.toUserId || String(groupData.members?.[1]?.userId || '') }))
   }, [groupId])
 
@@ -30,21 +27,14 @@ function Ious() {
   const create = async event => {
     event.preventDefault(); setBusy(true); setError('')
     try {
-      const currentUserId = Number(sessionStorage.getItem('zerosum_user_id'))
-      if (currentUserId !== Number(form.fromUserId) && currentUserId !== Number(form.toUserId)) {
-        throw new Error('You must be the lender or borrower to record this IOU.')
-      }
-      const response = await fetch(`${API_BASE_URL}/ious`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fromUserId: Number(form.fromUserId), toUserId: Number(form.toUserId), amountPaise: rupeesToPaise(form.amount), note: form.note, groupId: Number(groupId) }) })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Unable to add IOU.')
+      await apiRequest('/ious', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fromUserId: Number(form.fromUserId), toUserId: Number(form.toUserId), amountPaise: rupeesToPaise(form.amount), note: form.note, groupId: Number(groupId) }) })
       setForm(current => ({ ...current, amount: '', note: '' })); await reload()
     } catch (err) { setError(err.message) } finally { setBusy(false) }
   }
 
   const settle = async id => {
     try {
-      const response = await fetch(`${API_BASE_URL}/ious/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settled: true }) })
-      if (!response.ok) throw new Error('Unable to update IOU.')
+      await apiRequest(`/ious/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settled: true }) })
       await reload()
     } catch (err) { setError(err.message) }
   }

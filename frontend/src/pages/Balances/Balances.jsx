@@ -20,20 +20,14 @@ import {
   useState,
 } from 'react'
 import { rupeesToPaise } from '../../utils/currency.js'
-
-const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
+import { localDateString } from '../../utils/date.js'
+import { apiRequest } from '../../api/client.js'
 
 function Balances() {
-  const [searchParams] = useSearchParams()
-
-  /*
-   * The current Group Details page opens /balances.
-   * We support ?groupId=2 immediately, while keeping /balances
-   * working for the current test group.
-   *
-   * Later, we will make Group Details pass its actual group ID.
-   */
-  const groupId = searchParams.get('groupId') || '2'
+  const [searchParams, setSearchParams] = useSearchParams()
+  const groupId = searchParams.get('groupId')
+  const [availableGroups, setAvailableGroups] = useState([])
+  const [currentUserId, setCurrentUserId] = useState(null)
 
   const [group, setGroup] = useState(null)
   const [settlement, setSettlement] = useState(null)
@@ -53,33 +47,26 @@ function Balances() {
   const [simulating, setSimulating] = useState(false)
 
   useEffect(() => {
+    if (!groupId) {
+      Promise.all([apiRequest('/groups'), apiRequest('/users/me')]).then(([groups, user]) => {
+        setAvailableGroups(groups)
+        setCurrentUserId(user.userId)
+      }).catch(err => setError(err.message || 'Unable to load your groups.')).finally(() => setLoading(false))
+      return
+    }
     async function loadSettlement() {
       try {
         setLoading(true)
         setError('')
+        const user = await apiRequest('/users/me')
+        setCurrentUserId(user.userId)
 
-        const [groupResponse, settlementResponse, expensesResponse, historyResponse] =
-          await Promise.all([
-            fetch(`${API_BASE_URL}/groups/${groupId}`),
-            fetch(`${API_BASE_URL}/groups/${groupId}/settlement`),
-            fetch(`${API_BASE_URL}/groups/${groupId}/expenses`),
-            fetch(`${API_BASE_URL}/groups/${groupId}/settlement/history`),
-          ])
-
-        if (!groupResponse.ok) {
-          throw new Error('Failed to load group')
-        }
-
-        if (!settlementResponse.ok) {
-          throw new Error('Failed to load settlement')
-        }
-        if (!expensesResponse.ok) throw new Error('Failed to load expenses')
-        if (!historyResponse.ok) throw new Error('Failed to load payment history')
-
-        const groupData = await groupResponse.json()
-        const settlementData = await settlementResponse.json()
-        const expenses = await expensesResponse.json()
-        const history = await historyResponse.json()
+        const [groupData, settlementData, expenses, history] = await Promise.all([
+          apiRequest(`/groups/${groupId}`),
+          apiRequest(`/groups/${groupId}/settlement`),
+          apiRequest(`/groups/${groupId}/expenses`),
+          apiRequest(`/groups/${groupId}/settlement/history`),
+        ])
         setRawPaymentCount(expenses.reduce((count, expense) => count + expense.shares.filter(share => share.userId !== expense.paidBy).length, 0))
         setPaymentHistory(history)
 
@@ -108,8 +95,6 @@ function Balances() {
    * The group creator is therefore treated as the current user.
    * This matches our current backend model.
    */
-  const currentUserId = Number(sessionStorage.getItem('zerosum_user_id'))
-
   const currentUserBalance = useMemo(() => {
     return (
       balances.find(
@@ -133,13 +118,13 @@ function Balances() {
     setSimulating(true)
     setSimulationError('')
     try {
-      const response = await fetch(`${API_BASE_URL}/groups/${groupId}/settlement/whatif`, {
+      const data = await apiRequest(`/groups/${groupId}/settlement/whatif`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(simulationMode === 'expense' ? { expense: {
           description: hypotheticalExpense.description,
           amountPaise: rupeesToPaise(hypotheticalExpense.amount),
-          category: 'general', expenseDate: new Date().toISOString().slice(0, 10),
+          category: 'general', expenseDate: localDateString(),
           paidBy: Number(hypotheticalExpense.paidBy),
           participantIds: hypotheticalExpense.participantIds.map(Number), splitType: 'equal',
         } } : {
@@ -148,8 +133,6 @@ function Balances() {
           amountPaise: rupeesToPaise(payment.amount),
         }),
       })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Unable to simulate')
       setSimulation(data)
     } catch (err) {
       setSimulationError(err.message)
@@ -163,12 +146,10 @@ function Balances() {
     setRecordingPayment(true)
     setPaymentError('')
     try {
-      const response = await fetch(`${API_BASE_URL}/groups/${groupId}/settlement/payments`, {
+      await apiRequest(`/groups/${groupId}/settlement/payments`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fromUserId: transaction.fromUserId, toUserId: transaction.toUserId, amountPaise: transaction.amountPaise }),
       })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Unable to record payment.')
       setRefresh(value => value + 1)
     } catch (err) { setPaymentError(err.message) } finally { setRecordingPayment(false) }
   }
@@ -227,6 +208,10 @@ function Balances() {
 
       </div>
     )
+  }
+
+  if (!groupId) {
+    return <div className="mx-auto max-w-3xl"><p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">Settlements</p><h1 className="mt-2 text-3xl font-bold text-slate-900">Choose a group</h1><p className="mt-2 text-sm text-slate-500">Select one of your groups to view balances and payment history.</p>{error ? <p role="alert" className="mt-5 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{error}</p> : availableGroups.length ? <ul className="mt-5 divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white px-5">{availableGroups.map(item => <li key={item.id}><button onClick={() => setSearchParams({ groupId: String(item.id) })} className="w-full py-4 text-left"><span className="font-semibold text-slate-800">{item.name}</span><span className="ml-2 text-xs text-slate-500">{item.members?.length || 0} members</span></button></li>)}</ul> : <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center"><p className="text-sm text-slate-600">You are not in a group yet.</p><Link className="mt-3 inline-flex text-sm font-semibold text-emerald-700" to="/groups">Create or join a group</Link></div>}</div>
   }
 
   if (error) {
@@ -435,7 +420,7 @@ function Balances() {
           <div>
 
             <h2 className="font-semibold text-slate-900">
-              Optimized settlement plan
+              Suggested settlement plan
             </h2>
 
             <p className="mt-1 text-xs text-slate-400">
@@ -783,7 +768,7 @@ function Balances() {
 
               <p className="mt-2 text-sm font-medium leading-6 text-slate-700">
 
-                The group can be settled using only{' '}
+                This greedy plan settles the current balances in{' '}
 
                 <span className="font-bold text-slate-900">
                   {transactions.length}{' '}

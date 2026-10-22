@@ -69,8 +69,8 @@ public class SettlementEngine {
     }
 
     /**
-     * Calculates settlement transactions using the greedy
-     * minimum-cash-flow algorithm.
+     * Calculates settlement transactions using a deterministic greedy
+     * cash-flow heuristic. This does not guarantee a globally minimal count.
      */
     public List<SettlementTransactionDTO> calculateSettlements(
             List<BalanceDTO> balances
@@ -101,11 +101,7 @@ public class SettlementEngine {
                 new PriorityQueue<>(
                         (a, b) -> {
 
-                            int comparison =
-                                    Long.compare(
-                            Math.negateExact(b.balancePaise),
-                            Math.negateExact(a.balancePaise)
-                                    );
+                            int comparison = Long.compare(a.balancePaise, b.balancePaise);
 
                             if (comparison != 0) {
                                 return comparison;

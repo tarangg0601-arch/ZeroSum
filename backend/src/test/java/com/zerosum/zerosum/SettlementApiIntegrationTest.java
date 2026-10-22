@@ -51,7 +51,8 @@ class SettlementApiIntegrationTest {
 
     @Test
     void migratesAndRunsGroupExpenseWhatIfAndPaymentJourney() throws Exception {
-        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(6);
+        assertThat(jdbc.queryForObject("select to_regclass('settlement_runs') is null and to_regclass('settlement_runs_legacy') is not null", Boolean.class)).isTrue();
         assertThat(jdbc.queryForObject("select to_regclass('auth_email_attempts') is not null", Boolean.class)).isTrue();
         http.perform(get("/api/health")).andExpect(status().isOk());
         http.perform(get("/api/groups")).andExpect(status().isUnauthorized());
@@ -65,14 +66,25 @@ class SettlementApiIntegrationTest {
         activeToken = creatorToken;
         Long member = register("Member", "member@example.test");
         activeToken = creatorToken;
-        Long group = post("/api/groups", Map.of("name", "Journey", "groupType", "general"), "id");
+        perform(HttpMethod.POST, "/api/groups", Map.of("name", "Invalid type", "groupType", "unsupported"), 400);
+        var createdGroup = perform(HttpMethod.POST, "/api/groups", Map.of("name", "Journey", "groupType", "general"), 201);
+        Long group = createdGroup.get("id").asLong();
+        String joinCode = createdGroup.get("joinCode").asText();
+        assertThat(joinCode).hasSize(16).matches("[A-Z0-9_-]+");
         activeToken = null;
         http.perform(get("/api/groups/" + group)).andExpect(status().isUnauthorized());
         // The second registered account is authenticated with its actual token below and cannot access this group yet.
         activeToken = memberToken;
         http.perform(get("/api/groups/" + group).header("Authorization", "Bearer " + activeToken)).andExpect(status().isNotFound());
-        activeToken = creatorToken;
-        perform(HttpMethod.POST, "/api/groups/" + group + "/members", Map.of("email", "member@example.test"), 201);
+        activeToken = memberToken;
+        perform(HttpMethod.POST, "/api/groups/join", Map.of("joinCode", "invalid-code"), 404);
+        perform(HttpMethod.POST, "/api/groups/join", Map.of("joinCode", joinCode.toLowerCase()), 200);
+        perform(HttpMethod.POST, "/api/groups/join", Map.of("joinCode", joinCode), 409);
+        for (int attempt = 0; attempt < 7; attempt++) {
+            perform(HttpMethod.POST, "/api/groups/join", Map.of("joinCode", "not-a-code"), 404);
+        }
+        perform(HttpMethod.POST, "/api/groups/join", Map.of("joinCode", "not-a-code"), 429);
+        assertThat(jdbc.queryForObject("select max(attempt_count) from group_join_attempts", Integer.class)).isEqualTo(11);
         activeToken = memberToken;
         perform(HttpMethod.POST, "/api/groups/" + group + "/members", Map.of("email", "creator@example.test"), 403);
         perform(HttpMethod.DELETE, "/api/groups/" + group, null, 403);
@@ -99,7 +111,15 @@ class SettlementApiIntegrationTest {
         assertThat(preview.get("balances")).isNotNull();
         assertThat(jdbc.queryForObject("select count(*) from expenses where group_id = ?", Integer.class, group)).isEqualTo(before);
 
-        perform(HttpMethod.POST, "/api/groups/" + group + "/settlement/payments", Map.of("fromUserId", member, "toUserId", creator, "amountPaise", 500), 201);
+        Map<String, Object> paymentRequest = Map.of("fromUserId", member, "toUserId", creator, "amountPaise", 500);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var firstPayment = java.util.concurrent.CompletableFuture.supplyAsync(() -> paymentAttempt(group, memberToken, paymentRequest), executor);
+            var duplicatePayment = java.util.concurrent.CompletableFuture.supplyAsync(() -> paymentAttempt(group, memberToken, paymentRequest), executor);
+            assertThat(List.of(firstPayment.join(), duplicatePayment.join())).containsExactlyInAnyOrder(201, 400);
+        } finally {
+            executor.shutdownNow();
+        }
         var history = perform(HttpMethod.GET, "/api/groups/" + group + "/settlement/history", null, 200);
         assertThat(history).hasSize(1);
         assertThat(jdbc.queryForObject("select count(*) from expenses where group_id = ?", Integer.class, group)).isEqualTo(before);
@@ -107,6 +127,13 @@ class SettlementApiIntegrationTest {
         assertThat(afterPayment.path("transactions")).isEmpty();
         assertThat(List.of(afterPayment.path("balances").get(0).path("balancePaise").asLong(),
                 afterPayment.path("balances").get(1).path("balancePaise").asLong())).containsExactly(0L, 0L);
+        Long expenseId = jdbc.queryForObject("select id from expenses where group_id = ?", Long.class, group);
+        Map<String, Object> correction = Map.of("description", "Changed train", "amountPaise", 1000,
+                "category", "travel", "expenseDate", "2026-10-19", "paidBy", creator,
+                "participantIds", List.of(creator, member), "splitType", "equal");
+        perform(HttpMethod.PUT, "/api/groups/" + group + "/expenses/" + expenseId, correction, 409);
+        perform(HttpMethod.DELETE, "/api/groups/" + group + "/expenses/" + expenseId, null, 409);
+        perform(HttpMethod.DELETE, "/api/groups/" + group, null, 409);
         perform(HttpMethod.POST, "/api/auth/logout", null, 204);
         activeToken = null;
         http.perform(get("/api/groups").header("Authorization", "Bearer " + creatorToken)).andExpect(status().isUnauthorized());
@@ -188,6 +215,16 @@ class SettlementApiIntegrationTest {
             return content.isBlank() ? objectMapper.createObjectNode() : objectMapper.readTree(content);
         } catch (Exception exception) {
             throw new AssertionError("Request failed: " + method + " " + path, exception);
+        }
+    }
+
+    private int paymentAttempt(Long groupId, String token, Map<String, ?> body) {
+        try {
+            return http.perform(request(HttpMethod.POST, "/api/groups/" + groupId + "/settlement/payments")
+                    .contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer " + token)
+                    .content(objectMapper.writeValueAsBytes(body))).andReturn().getResponse().getStatus();
+        } catch (Exception exception) {
+            throw new java.util.concurrent.CompletionException(exception);
         }
     }
 }

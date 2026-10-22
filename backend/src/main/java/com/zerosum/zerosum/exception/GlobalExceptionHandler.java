@@ -27,4 +27,10 @@ public class GlobalExceptionHandler {
                 "error", exception.getMessage()
         );
     }
+
+    @ExceptionHandler(ArithmeticException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public Map<String, String> handleFinancialOverflow(ArithmeticException exception) {
+        return Map.of("error", "The financial total exceeds the supported range");
+    }
 }

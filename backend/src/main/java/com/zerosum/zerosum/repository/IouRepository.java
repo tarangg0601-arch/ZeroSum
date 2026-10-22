@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface IouRepository extends JpaRepository<Iou, Long> {
     List<Iou> findByGroupIdOrderByCreatedAtDesc(Long groupId);
+    boolean existsByGroupId(Long groupId);
 }

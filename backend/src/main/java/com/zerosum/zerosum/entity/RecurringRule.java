@@ -35,6 +35,15 @@ public class RecurringRule {
     @Column(name = "next_run_date", nullable = false)
     private LocalDate nextRunDate;
 
+    @Column(name = "anchor_day", nullable = false)
+    private int anchorDay;
+
+    @Column(name = "anchor_month", nullable = false)
+    private int anchorMonth;
+
+    @Column(name = "anchor_month_end", nullable = false)
+    private boolean anchorMonthEnd;
+
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
@@ -53,6 +62,12 @@ public class RecurringRule {
     public void setFrequency(String frequency) { this.frequency = frequency; }
     public LocalDate getNextRunDate() { return nextRunDate; }
     public void setNextRunDate(LocalDate nextRunDate) { this.nextRunDate = nextRunDate; }
+    public int getAnchorDay() { return anchorDay; }
+    public void setAnchorDay(int anchorDay) { this.anchorDay = anchorDay; }
+    public int getAnchorMonth() { return anchorMonth; }
+    public void setAnchorMonth(int anchorMonth) { this.anchorMonth = anchorMonth; }
+    public boolean isAnchorMonthEnd() { return anchorMonthEnd; }
+    public void setAnchorMonthEnd(boolean anchorMonthEnd) { this.anchorMonthEnd = anchorMonthEnd; }
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
 }

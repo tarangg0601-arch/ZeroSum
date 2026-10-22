@@ -40,4 +40,20 @@ describe('balances user journey', () => {
     expect(payload.expense).toMatchObject({ description: 'Hotel', amountPaise: 1234, paidBy: 1, participantIds: [1, 2], splitType: 'equal' })
     expect(fetch.mock.calls.some(([url]) => String(url).endsWith('/settlement/payments'))).toBe(false)
   })
+
+  it('asks the user to select an accessible group instead of guessing an ID', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('fetch', vi.fn(async input => {
+      const url = String(input)
+      if (url.endsWith('/api/groups')) return Response.json([{ id: 8, name: 'Lake trip', members: [] }])
+      if (url.endsWith('/api/users/me')) return Response.json({ userId: 1, name: 'Asha' })
+      if (url.endsWith('/api/groups/8')) return Response.json({ id: 8, name: 'Lake trip' })
+      if (url.endsWith('/api/groups/8/settlement/history') || url.endsWith('/api/groups/8/expenses')) return Response.json([])
+      return Response.json({ balances: [], transactions: [], explanation: { steps: [] } })
+    }))
+    render(<MemoryRouter initialEntries={['/balances']}><Balances /></MemoryRouter>)
+    await user.click(await screen.findByRole('button', { name: /Lake trip/ }))
+    await screen.findByText('Suggested settlement plan')
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith('/groups/2'))).toBe(false)
+  })
 })

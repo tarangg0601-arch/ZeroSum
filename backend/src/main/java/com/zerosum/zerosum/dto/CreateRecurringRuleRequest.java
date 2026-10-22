@@ -11,5 +11,6 @@ public record CreateRecurringRuleRequest(
         String category,
         @NotBlank String frequency,
         @NotNull LocalDate nextRunDate,
-        @NotNull Long paidBy
+        @NotNull Long paidBy,
+        String anchorType
 ) {}

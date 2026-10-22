@@ -25,8 +25,8 @@ import {
 } from 'react'
 import { createSplitPayload } from '../../utils/expenseSplits.js'
 import { rupeesToPaise } from '../../utils/currency.js'
-
-const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
+import { localDateString } from '../../utils/date.js'
+import { apiRequest } from '../../api/client.js'
 
 const categories = [
   {
@@ -65,8 +65,10 @@ function AddExpense() {
   const [searchParams] = useSearchParams()
 
   const groupId = searchParams.get('groupId')
+  const expenseId = searchParams.get('expenseId')
 
   const [group, setGroup] = useState(null)
+  const [availableGroups, setAvailableGroups] = useState([])
   const [members, setMembers] = useState([])
 
   const [description, setDescription] = useState('')
@@ -74,7 +76,7 @@ function AddExpense() {
   const [paidBy, setPaidBy] = useState('')
   const [category, setCategory] = useState('Food')
   const [date, setDate] = useState(
-    new Date().toISOString().split('T')[0],
+    localDateString(),
   )
 
   const [selectedMembers, setSelectedMembers] = useState([])
@@ -89,8 +91,12 @@ function AddExpense() {
   useEffect(() => {
     async function loadGroup() {
       if (!groupId) {
-        setError('No group selected. Open Add Expense from a group.')
-        setLoading(false)
+        try {
+          const groups = await apiRequest('/groups')
+          setAvailableGroups(groups)
+        } catch (err) {
+          setError(err.message || 'Unable to load your groups.')
+        } finally { setLoading(false) }
         return
       }
 
@@ -98,15 +104,7 @@ function AddExpense() {
         setLoading(true)
         setError('')
 
-        const response = await fetch(
-          `${API_BASE_URL}/groups/${groupId}`,
-        )
-
-        if (!response.ok) {
-          throw new Error('Failed to load group')
-        }
-
-        const data = await response.json()
+        const data = await apiRequest(`/groups/${groupId}`)
 
         setGroup(data)
 
@@ -121,6 +119,17 @@ function AddExpense() {
             groupMembers.map((member) => member.userId),
           )
         }
+        if (expenseId) {
+          const expense = await apiRequest(`/groups/${groupId}/expenses/${expenseId}`)
+          setDescription(expense.description)
+          setAmount((expense.amountPaise / 100).toFixed(2))
+          setCategory(expense.category || 'Other')
+          setDate(expense.expenseDate)
+          setPaidBy(expense.paidBy)
+          setSelectedMembers(expense.shares.map(share => share.userId))
+          setSplitType('exact')
+          setSplitValues(Object.fromEntries(expense.shares.map(share => [share.userId, (share.shareAmountPaise / 100).toFixed(2)])))
+        }
       } catch (err) {
         console.error(err)
         setError('Unable to load group details.')
@@ -130,7 +139,7 @@ function AddExpense() {
     }
 
     loadGroup()
-  }, [groupId])
+  }, [groupId, expenseId])
 
   const numericAmount = Number(amount) || 0
   const availableCategories = (modeCategories[group?.groupType] || categories.map(item => item.name))
@@ -209,36 +218,15 @@ function AddExpense() {
         ...createSplitPayload(amountPaise, splitType, selectedMembers, splitValues),
       }
 
-      const response = await fetch(
-        `${API_BASE_URL}/groups/${groupId}/expenses`,
-        {
-          method: 'POST',
+      await apiRequest(expenseId ? `/groups/${groupId}/expenses/${expenseId}` : `/groups/${groupId}/expenses`, {
+          method: expenseId ? 'PUT' : 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(payload),
-        },
-      )
+        })
 
-      if (!response.ok) {
-        let message = 'Failed to add expense.'
-
-        try {
-          const errorData = await response.json()
-
-          if (errorData?.message) {
-            message = errorData.message
-          }
-        } catch {
-          // Keep default error message.
-        }
-
-        throw new Error(message)
-      }
-
-      await response.json()
-
-      setSuccess('Expense added successfully.')
+      setSuccess(expenseId ? 'Expense updated successfully.' : 'Expense added successfully.')
 
       setTimeout(() => {
         navigate(`/groups/${groupId}`)
@@ -261,6 +249,10 @@ function AddExpense() {
         </div>
       </div>
     )
+  }
+
+  if (!groupId) {
+    return <div className="mx-auto max-w-3xl"><Link to="/groups" className="inline-flex items-center gap-2 text-sm text-slate-500"><ArrowLeft size={16} />Back to groups</Link><h1 className="mt-4 text-3xl font-bold text-slate-900">Choose a group</h1><p className="mt-2 text-sm text-slate-500">Expenses always belong to one of your groups.</p>{error && <p role="alert" className="mt-4 text-sm text-rose-600">{error}</p>}{availableGroups.length ? <ul className="mt-5 divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white px-5">{availableGroups.map(item => <li key={item.id}><Link className="block py-4 font-semibold text-slate-800 hover:text-emerald-700" to={`/expenses/new?groupId=${item.id}`}>{item.name}<span className="ml-2 text-xs font-normal text-slate-500">{item.members?.length || 0} members</span></Link></li>)}</ul> : !error && <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center"><p className="text-sm text-slate-600">Create or join a group before adding an expense.</p><Link className="mt-3 inline-flex text-sm font-semibold text-emerald-700" to="/groups">Open groups</Link></div>}</div>
   }
 
   if (error && !group) {
@@ -322,7 +314,7 @@ function AddExpense() {
         </p>
 
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-          Add an expense
+          {expenseId ? 'Edit expense' : 'Add an expense'}
         </h1>
 
         <p className="mt-2 text-sm text-slate-500">
@@ -791,8 +783,8 @@ function AddExpense() {
                   className="mt-5 flex h-11 w-full items-center justify-center rounded-xl bg-emerald-500 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {submitting
-                    ? 'Adding expense...'
-                    : 'Add expense'}
+                    ? expenseId ? 'Saving changes…' : 'Adding expense…'
+                    : expenseId ? 'Save changes' : 'Add expense'}
                 </button>
 
 

@@ -36,7 +36,7 @@ describe('account authentication journey', () => {
     await user.type(screen.getByLabelText(/Password/), 'a-long-password-123')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
     await waitFor(() => expect(sessionStorage.getItem('zerosum_token')).toBe('signed-token'))
-    expect(sessionStorage.getItem('zerosum_user_id')).toBe('8')
+    expect(sessionStorage.getItem('zerosum_user_id')).toBeNull()
   })
 
   it('does not store credentials when sign-in is rejected', async () => {

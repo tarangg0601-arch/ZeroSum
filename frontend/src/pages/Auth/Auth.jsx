@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-
-const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
+import { apiRequest } from '../../api/client.js'
 
 export default function Auth() {
   const navigate = useNavigate()
@@ -14,14 +13,11 @@ export default function Auth() {
   async function submit(event) {
     event.preventDefault(); setBusy(true); setError(''); setNotice('')
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/${register ? 'register' : 'login'}`, {
+      const result = await apiRequest(`/auth/${register ? 'register' : 'login'}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.detail || result.error || result.message || 'Unable to sign in.')
       if (register) { setNotice(result.message || 'Check your email for a verification link.'); return }
       sessionStorage.setItem('zerosum_token', result.token)
-      sessionStorage.setItem('zerosum_user_id', String(result.userId))
       navigate('/groups', { replace: true })
     } catch (submitError) { setError(submitError.message) }
     finally { setBusy(false) }

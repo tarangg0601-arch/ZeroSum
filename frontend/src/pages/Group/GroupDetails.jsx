@@ -7,12 +7,12 @@ import {
   Users,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-
-const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { apiRequest } from '../../api/client.js'
 
 function GroupDetails() {
   const { groupId } = useParams()
+  const navigate = useNavigate()
 
   const [group, setGroup] = useState(null)
   const [expenses, setExpenses] = useState([])
@@ -23,6 +23,11 @@ function GroupDetails() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteError, setInviteError] = useState('')
   const [inviting, setInviting] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState(null)
+  const [copyMessage, setCopyMessage] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [showEditGroup, setShowEditGroup] = useState(false)
+  const [groupForm, setGroupForm] = useState({ name: '', groupType: 'general' })
 
   useEffect(() => {
     async function loadGroupData() {
@@ -30,35 +35,15 @@ function GroupDetails() {
         setLoading(true)
         setError('')
 
-        const [groupResponse, expensesResponse, balancesResponse] =
-          await Promise.all([
-            fetch(`${API_BASE_URL}/groups/${groupId}`),
-            fetch(`${API_BASE_URL}/groups/${groupId}/expenses`),
-            fetch(`${API_BASE_URL}/groups/${groupId}/balances`),
-          ])
-
-        if (!groupResponse.ok) {
-          throw new Error('Failed to load group')
-        }
-
-        if (!expensesResponse.ok) {
-          throw new Error('Failed to load expenses')
-        }
-
-        if (!balancesResponse.ok) {
-          throw new Error('Failed to load balances')
-        }
-
-        const [groupData, expenseData, balanceData] =
-          await Promise.all([
-            groupResponse.json(),
-            expensesResponse.json(),
-            balancesResponse.json(),
-          ])
+        const [groupData, expenseData, balanceData, currentUser] = await Promise.all([
+          apiRequest(`/groups/${groupId}`), apiRequest(`/groups/${groupId}/expenses`),
+          apiRequest(`/groups/${groupId}/balances`), apiRequest('/users/me'),
+        ])
 
         setGroup(groupData)
         setExpenses(expenseData)
         setBalances(balanceData)
+        setCurrentUserId(currentUser.userId)
       } catch (err) {
         console.error(err)
         setError('Unable to load group details.')
@@ -68,7 +53,7 @@ function GroupDetails() {
     }
 
     loadGroupData()
-  }, [groupId])
+  }, [groupId, refreshKey])
 
   const totalExpensesPaise = useMemo(() => {
     return expenses.reduce(
@@ -80,32 +65,57 @@ function GroupDetails() {
 
   const currentUserBalance = useMemo(() => {
     const currentUser = balances.find(
-      (balance) => balance.userId === Number(sessionStorage.getItem('zerosum_user_id')),
+      (balance) => balance.userId === currentUserId,
     )
 
     return currentUser?.balancePaise ?? 0
-  }, [balances])
+  }, [balances, currentUserId])
 
   async function handleInvite(event) {
     event.preventDefault()
     setInviting(true)
     setInviteError('')
     try {
-      const response = await fetch(`${API_BASE_URL}/groups/${groupId}/members`, {
+      await apiRequest(`/groups/${groupId}/members`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: inviteEmail }),
       })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || result.message || 'Unable to add participant.')
-      const [groupResponse, balanceResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/groups/${groupId}`), fetch(`${API_BASE_URL}/groups/${groupId}/balances`),
-      ])
-      if (!groupResponse.ok || !balanceResponse.ok) throw new Error('Participant was added, but group data could not be refreshed.')
-      setGroup(await groupResponse.json())
-      setBalances(await balanceResponse.json())
+      const [groupData, balanceData] = await Promise.all([apiRequest(`/groups/${groupId}`), apiRequest(`/groups/${groupId}/balances`)] )
+      setGroup(groupData)
+      setBalances(balanceData)
       setInviteEmail('')
       setShowInvite(false)
     } catch (err) { setInviteError(err.message) } finally { setInviting(false) }
+  }
+
+  async function handleDeleteExpense(expense) {
+    if (!window.confirm(`Delete “${expense.description}”? This cannot be undone.`)) return
+    setError('')
+    try {
+      await apiRequest(`/groups/${groupId}/expenses/${expense.id}`, { method: 'DELETE' })
+      setRefreshKey(value => value + 1)
+    } catch (err) {
+      setError(err.message || 'Could not delete this expense.')
+    }
+  }
+
+  async function handleUpdateGroup(event) {
+    event.preventDefault()
+    setError('')
+    try {
+      await apiRequest(`/groups/${groupId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(groupForm) })
+      setShowEditGroup(false)
+      setRefreshKey(value => value + 1)
+    } catch (err) { setError(err.message || 'Could not update the group.') }
+  }
+
+  async function handleDeleteGroup() {
+    if (!window.confirm(`Delete “${group.name}”? This removes its expenses and cannot be undone.`)) return
+    setError('')
+    try {
+      await apiRequest(`/groups/${groupId}`, { method: 'DELETE' })
+      navigate('/groups')
+    } catch (err) { setError(err.message || 'Could not delete the group.') }
   }
 
   const formatRupees = (paise) => {
@@ -157,7 +167,6 @@ function GroupDetails() {
   }
 
   const getBalanceStatus = (memberBalance, memberId) => {
-    const currentUserId = Number(sessionStorage.getItem('zerosum_user_id'))
     if (memberBalance > 0) {
       return memberId === currentUserId
         ? 'You are owed'
@@ -173,13 +182,16 @@ function GroupDetails() {
     return 'Settled'
   }
 
+  const canManageMembers = group?.createdBy === currentUserId
+
   const copyJoinCode = async () => {
     if (!group?.joinCode) return
 
     try {
       await navigator.clipboard.writeText(group.joinCode)
-    } catch (err) {
-      console.error('Unable to copy join code', err)
+      setCopyMessage('Join code copied.')
+    } catch {
+      setCopyMessage('Could not copy. Select and copy the code manually.')
     }
   }
 
@@ -271,14 +283,19 @@ function GroupDetails() {
 
           <div className="flex flex-wrap gap-3">
 
-            <button
+            {canManageMembers && <>
+              <button type="button" onClick={() => { setGroupForm({ name: group.name, groupType: group.groupType }); setShowEditGroup(true) }} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600">Edit group</button>
+              <button type="button" onClick={handleDeleteGroup} className="rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700">Delete group</button>
+            </>}
+
+            {canManageMembers && <button
               type="button"
               onClick={() => { setInviteError(''); setShowInvite(true) }}
               className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
             >
               <Users size={17} />
-              Invite
-            </button>
+              Add member
+            </button>}
 
             <Link
               to={`/expenses/new?groupId=${group.id}`}
@@ -374,7 +391,7 @@ function GroupDetails() {
 
                 <div
                   key={expense.id}
-                  className="flex items-center gap-4 px-6 py-5 transition hover:bg-slate-50/70"
+                  className="flex flex-wrap items-center gap-4 px-6 py-5 transition hover:bg-slate-50/70"
                 >
 
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
@@ -413,6 +430,11 @@ function GroupDetails() {
                       {formatDate(expense.expenseDate)}
                     </p>
 
+                  </div>
+
+                  <div className="flex gap-2 sm:ml-2">
+                    <Link aria-label={`Edit ${expense.description}`} to={`/expenses/new?groupId=${groupId}&expenseId=${expense.id}`} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600">Edit</Link>
+                    <button type="button" onClick={() => handleDeleteExpense(expense)} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700">Delete</button>
                   </div>
 
                 </div>
@@ -573,17 +595,19 @@ function GroupDetails() {
           <Copy size={16} />
           Copy code
         </button>
+        {copyMessage && <p role="status" className="text-xs text-emerald-700">{copyMessage}</p>}
 
       </section>
 
-      {showInvite && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setShowInvite(false) }}>
+      {showInvite && canManageMembers && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setShowInvite(false) }}>
         <form onSubmit={handleInvite} className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
-          <div><h2 className="text-xl font-semibold text-slate-900">Add a participant</h2><p className="mt-1 text-sm text-slate-500">Add a named member to {group.name}.</p></div>
+          <div><h2 className="text-xl font-semibold text-slate-900">Add an existing account</h2><p className="mt-1 text-sm text-slate-500">This adds the registered account directly. No email invitation is sent.</p></div>
           {inviteError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{inviteError}</p>}
           <label className="block text-sm text-slate-600">Registered account email<input required type="email" autoFocus value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2" /></label>
           <div className="flex justify-end gap-2"><button type="button" onClick={() => setShowInvite(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600">Cancel</button><button disabled={inviting} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{inviting ? 'Adding…' : 'Add member'}</button></div>
         </form>
       </div>}
+      {showEditGroup && canManageMembers && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setShowEditGroup(false) }}><form onSubmit={handleUpdateGroup} className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl"><h2 className="text-xl font-semibold text-slate-900">Edit group</h2><label className="block text-sm text-slate-600">Group name<input required maxLength="150" value={groupForm.name} onChange={event => setGroupForm({ ...groupForm, name: event.target.value })} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2" /></label><label className="block text-sm text-slate-600">Group mode<select value={groupForm.groupType} onChange={event => setGroupForm({ ...groupForm, groupType: event.target.value })} className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2"><option value="general">General</option><option value="hostel">Hostel</option><option value="trip">Trip</option></select></label><div className="flex justify-end gap-2"><button type="button" onClick={() => setShowEditGroup(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600">Cancel</button><button className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white">Save group</button></div></form></div>}
     </div>
   )
 }

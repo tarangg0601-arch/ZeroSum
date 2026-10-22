@@ -64,6 +64,8 @@ public class RecurringExpenseService {
         String frequency = request.frequency().toUpperCase();
         if (!FREQUENCIES.contains(frequency)) throw new IllegalArgumentException("Frequency must be daily, weekly, monthly, or yearly");
         if (request.nextRunDate().isBefore(LocalDate.now(clock))) throw new IllegalArgumentException("Next run date must be today or later");
+        String anchorType = request.anchorType() == null ? "day" : request.anchorType().toLowerCase();
+        if (!List.of("day", "month_end").contains(anchorType)) throw new IllegalArgumentException("Anchor type must be day or month_end");
 
         RecurringRule rule = new RecurringRule();
         rule.setGroup(group);
@@ -73,6 +75,9 @@ public class RecurringExpenseService {
         rule.setCategory(request.category());
         rule.setFrequency(frequency);
         rule.setNextRunDate(request.nextRunDate());
+        rule.setAnchorDay(request.nextRunDate().getDayOfMonth());
+        rule.setAnchorMonth(request.nextRunDate().getMonthValue());
+        rule.setAnchorMonthEnd(anchorType.equals("month_end"));
         rule.setActive(true);
         return toResponse(ruleRepository.save(rule));
     }
@@ -85,8 +90,7 @@ public class RecurringExpenseService {
 
     @Transactional
     public RecurringRuleResponse setActive(Long groupId, Long ruleId, boolean active) {
-        RecurringRule rule = ruleRepository.findById(ruleId)
-                .filter(item -> item.getGroup().getId().equals(groupId))
+        RecurringRule rule = ruleRepository.lockByGroupAndId(groupId, ruleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Recurring rule not found"));
         rule.setActive(active);
         return toResponse(rule);
@@ -96,7 +100,7 @@ public class RecurringExpenseService {
     public int generateDueExpenses() {
         LocalDate today = LocalDate.now(clock);
         int generated = 0;
-        List<RecurringRule> dueRules = ruleRepository.findByActiveTrueAndNextRunDateLessThanEqualOrderByNextRunDateAsc(today);
+        List<RecurringRule> dueRules = ruleRepository.lockDueRules(today);
         for (RecurringRule rule : dueRules) {
             while (!rule.getNextRunDate().isAfter(today)) {
                 LocalDate dueDate = rule.getNextRunDate();
@@ -104,7 +108,8 @@ public class RecurringExpenseService {
                     createExpense(rule, dueDate);
                     generated++;
                 }
-                rule.setNextRunDate(advance(dueDate, rule.getFrequency()));
+                rule.setNextRunDate(advance(dueDate, rule.getFrequency(), rule.getAnchorDay(),
+                        rule.getAnchorMonth(), rule.isAnchorMonthEnd()));
             }
         }
         ruleRepository.saveAll(dueRules);
@@ -112,7 +117,7 @@ public class RecurringExpenseService {
     }
 
     private void createExpense(RecurringRule rule, LocalDate date) {
-        var members = memberRepository.findByGroupId(rule.getGroup().getId());
+        var members = memberRepository.findByGroupIdOrderByUserIdAsc(rule.getGroup().getId());
         if (members.isEmpty()) throw new IllegalStateException("Cannot generate an expense for a group without members");
         Expense expense = new Expense();
         expense.setGroup(rule.getGroup());
@@ -138,19 +143,19 @@ public class RecurringExpenseService {
         }
     }
 
-    static LocalDate advance(LocalDate date, String frequency) {
+    static LocalDate advance(LocalDate date, String frequency, int anchorDay, int anchorMonth, boolean anchorMonthEnd) {
         return switch (frequency.toUpperCase()) {
             case "DAILY" -> date.plusDays(1);
             case "WEEKLY" -> date.plusWeeks(1);
             case "MONTHLY" -> {
                 LocalDate nextMonth = date.plusMonths(1);
-                yield date.getDayOfMonth() == date.lengthOfMonth()
-                        ? nextMonth.withDayOfMonth(nextMonth.lengthOfMonth()) : nextMonth;
+                yield nextMonth.withDayOfMonth(anchorMonthEnd ? nextMonth.lengthOfMonth()
+                        : Math.min(anchorDay, nextMonth.lengthOfMonth()));
             }
             case "YEARLY" -> {
-                LocalDate nextYear = date.plusYears(1);
-                yield date.getDayOfMonth() == date.lengthOfMonth()
-                        ? nextYear.withDayOfMonth(nextYear.lengthOfMonth()) : nextYear;
+                LocalDate nextYear = date.plusYears(1).withMonth(anchorMonth);
+                yield nextYear.withDayOfMonth(anchorMonthEnd ? nextYear.lengthOfMonth()
+                        : Math.min(anchorDay, nextYear.lengthOfMonth()));
             }
             default -> throw new IllegalArgumentException("Unsupported recurring frequency");
         };
@@ -159,6 +164,6 @@ public class RecurringExpenseService {
     private RecurringRuleResponse toResponse(RecurringRule rule) {
         return new RecurringRuleResponse(rule.getId(), rule.getGroup().getId(), rule.getPaidBy().getId(),
                 rule.getDescription(), rule.getAmountPaise(), rule.getCategory(), rule.getFrequency(),
-                rule.getNextRunDate(), rule.isActive());
+                rule.getNextRunDate(), rule.isAnchorMonthEnd() ? "month_end" : "day", rule.isActive());
     }
 }

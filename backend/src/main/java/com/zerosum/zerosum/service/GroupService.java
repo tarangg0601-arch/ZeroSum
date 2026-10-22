@@ -12,13 +12,16 @@ import com.zerosum.zerosum.exception.ResourceNotFoundException;
 import com.zerosum.zerosum.repository.GroupMemberRepository;
 import com.zerosum.zerosum.repository.GroupRepository;
 import com.zerosum.zerosum.repository.UserRepository;
+import com.zerosum.zerosum.repository.IouRepository;
+import com.zerosum.zerosum.repository.SettlementRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
-import java.util.UUID;
+import java.security.SecureRandom;
+import java.util.Base64;
 
 @Service
 public class GroupService {
@@ -26,15 +29,23 @@ public class GroupService {
     private final GroupRepository groupRepository;
     private final GroupMemberRepository groupMemberRepository;
     private final UserRepository userRepository;
+    private final GroupJoinRateLimiter joinRateLimiter;
+    private final IouRepository iouRepository;
+    private final SettlementRepository settlementRepository;
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     public GroupService(
             GroupRepository groupRepository,
             GroupMemberRepository groupMemberRepository,
-            UserRepository userRepository
+            UserRepository userRepository, GroupJoinRateLimiter joinRateLimiter,
+            IouRepository iouRepository, SettlementRepository settlementRepository
     ) {
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.userRepository = userRepository;
+        this.joinRateLimiter = joinRateLimiter;
+        this.iouRepository = iouRepository;
+        this.settlementRepository = settlementRepository;
     }
 
     @Transactional
@@ -78,7 +89,7 @@ public class GroupService {
             Long actorId
     ) {
 
-        Group group = groupRepository.findById(groupId)
+        Group group = groupRepository.lockById(groupId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Group not found")
                 );
@@ -96,14 +107,45 @@ public class GroupService {
     @Transactional
     public void deleteGroup(Long groupId, Long actorId) {
 
-        Group group = groupRepository.findById(groupId)
+        Group group = groupRepository.lockById(groupId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Group not found")
                 );
 
         requireOwner(group, actorId);
 
+        if (iouRepository.existsByGroupId(groupId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This group has linked IOUs. Settle or unlink them before deleting the group.");
+        }
+        if (settlementRepository.existsByGroupIdAndStatus(groupId, "completed")) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This group has payment history. Keep the group to preserve its financial record.");
+        }
+
         groupRepository.delete(group);
+    }
+
+    @Transactional
+    public GroupResponse joinByCode(String submittedCode, Long currentUserId, String clientAddress) {
+        if (!joinRateLimiter.check(clientAddress)) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Too many join attempts. Try again later.");
+        }
+        String joinCode = submittedCode == null ? "" : submittedCode.trim().toUpperCase(java.util.Locale.ROOT);
+        Group group = groupRepository.findByJoinCodeIgnoreCase(joinCode)
+                .orElseThrow(() -> new ResourceNotFoundException("Join code is invalid"));
+        group = groupRepository.lockById(group.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Join code is invalid"));
+        if (groupMemberRepository.existsByGroupIdAndUserId(group.getId(), currentUserId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "You are already a member of this group");
+        }
+        User currentUser = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        GroupMember member = new GroupMember();
+        member.setGroup(group);
+        member.setUser(currentUser);
+        groupMemberRepository.save(member);
+        return getGroup(group.getId());
     }
 
     @Transactional
@@ -113,7 +155,7 @@ public class GroupService {
             Long actorId
     ) {
 
-        Group group = groupRepository.findById(groupId)
+        Group group = groupRepository.lockById(groupId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Group not found")
                 );
@@ -162,7 +204,7 @@ public class GroupService {
 
         List<GroupMemberResponse> members =
                 groupMemberRepository
-                        .findByGroupId(groupId)
+                        .findByGroupIdOrderByUserIdAsc(groupId)
                         .stream()
                         .map(this::toMemberResponse)
                         .toList();
@@ -186,7 +228,7 @@ public class GroupService {
         }
 
         return groupMemberRepository
-                .findByGroupId(groupId)
+                .findByGroupIdOrderByUserIdAsc(groupId)
                 .stream()
                 .map(this::toMemberResponse)
                 .toList();
@@ -206,11 +248,9 @@ public class GroupService {
     }
 
     private String generateJoinCode() {
-
-        return UUID.randomUUID()
-                .toString()
-                .substring(0, 8)
-                .toUpperCase();
+        byte[] bytes = new byte[12];
+        RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes).toUpperCase(java.util.Locale.ROOT);
     }
 
     private void requireOwner(Group group, Long actorId) {

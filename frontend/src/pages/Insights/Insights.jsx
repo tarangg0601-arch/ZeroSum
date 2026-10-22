@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-
-const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
+import { apiRequest } from '../../api/client.js'
 
 function Insights() {
   const { groupId } = useParams()
@@ -17,10 +16,8 @@ function Insights() {
     const query = new URLSearchParams()
     if (from) query.set('from', from)
     if (to) query.set('to', to)
-    Promise.all([fetch(`${API_BASE_URL}/groups/${groupId}`), fetch(`${API_BASE_URL}/groups/${groupId}/insights?${query}`)])
-      .then(async ([groupResponse, insightResponse]) => {
-        if (!groupResponse.ok || !insightResponse.ok) throw new Error('Unable to load group insights.')
-        const [groupInfo, insights] = await Promise.all([groupResponse.json(), insightResponse.json()])
+    Promise.all([apiRequest(`/groups/${groupId}`), apiRequest(`/groups/${groupId}/insights?${query}`)])
+      .then(([groupInfo, insights]) => {
         if (current) { setGroup(groupInfo); setData(insights); setError('') }
       })
       .catch(err => { if (current) setError(err.message) })

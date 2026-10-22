@@ -16,6 +16,7 @@ import com.zerosum.zerosum.repository.ExpenseShareRepository;
 import com.zerosum.zerosum.repository.GroupMemberRepository;
 import com.zerosum.zerosum.repository.GroupRepository;
 import com.zerosum.zerosum.repository.UserRepository;
+import com.zerosum.zerosum.repository.SettlementRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,8 @@ import java.util.List;
 import java.math.BigInteger;
 import java.util.HashSet;
 import java.util.Set;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ExpenseService {
@@ -32,19 +35,22 @@ public class ExpenseService {
     private final GroupRepository groupRepository;
     private final GroupMemberRepository groupMemberRepository;
     private final UserRepository userRepository;
+    private final SettlementRepository settlementRepository;
 
     public ExpenseService(
             ExpenseRepository expenseRepository,
             ExpenseShareRepository expenseShareRepository,
             GroupRepository groupRepository,
             GroupMemberRepository groupMemberRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            SettlementRepository settlementRepository
     ) {
         this.expenseRepository = expenseRepository;
         this.expenseShareRepository = expenseShareRepository;
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.userRepository = userRepository;
+        this.settlementRepository = settlementRepository;
     }
 
     @Transactional
@@ -52,6 +58,8 @@ public class ExpenseService {
             Long groupId,
             CreateExpenseRequest request
     ) {
+
+        lockGroup(groupId);
 
         Group group = findGroup(groupId);
         User payer = findUser(request.paidBy());
@@ -87,6 +95,9 @@ public class ExpenseService {
             Long expenseId,
             UpdateExpenseRequest request
     ) {
+
+        lockGroup(groupId);
+        rejectEditAfterPayment(groupId);
 
         Expense expense = findExpenseInGroup(groupId, expenseId);
 
@@ -133,6 +144,9 @@ public class ExpenseService {
             Long expenseId
     ) {
 
+        lockGroup(groupId);
+        rejectEditAfterPayment(groupId);
+
         Expense expense = findExpenseInGroup(groupId, expenseId);
 
         expenseShareRepository.deleteAll(
@@ -148,6 +162,17 @@ public class ExpenseService {
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Group not found")
                 );
+    }
+
+    private void lockGroup(Long groupId) {
+        groupRepository.lockById(groupId).orElseThrow(() -> new ResourceNotFoundException("Group not found"));
+    }
+
+    private void rejectEditAfterPayment(Long groupId) {
+        if (settlementRepository.existsByGroupIdAndStatus(groupId, "completed")) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Expenses cannot be changed after a payment is recorded. Create a correction expense to preserve payment history.");
+        }
     }
 
     private User findUser(Long userId) {
@@ -187,7 +212,7 @@ public class ExpenseService {
     ) {
 
         List<GroupMember> members =
-                groupMemberRepository.findByGroupId(groupId);
+                groupMemberRepository.findByGroupIdOrderByUserIdAsc(groupId);
 
         if (members.isEmpty()) {
             throw new IllegalArgumentException(
@@ -211,6 +236,7 @@ public class ExpenseService {
                 .filter(user ->
                         participantIds.contains(user.getId())
                 )
+                .sorted(java.util.Comparator.comparing(User::getId))
                 .toList();
 
         if (participants.isEmpty()) {
@@ -280,7 +306,12 @@ public class ExpenseService {
             }
             if (!supplied.equals(selected)) throw new IllegalArgumentException("Split values must match the participants");
             values = inputs;
-            long total = values.stream().mapToLong(ExpenseSplitInput::value).reduce(0, Math::addExact);
+            values = values.stream().sorted(java.util.Comparator.comparing(ExpenseSplitInput::userId)).toList();
+            BigInteger totalBig = values.stream().map(value -> BigInteger.valueOf(value.value())).reduce(BigInteger.ZERO, BigInteger::add);
+            if (totalBig.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) {
+                throw new IllegalArgumentException("The total split weight is too large");
+            }
+            long total = totalBig.longValueExact();
             if (type.equals("exact") && total != amountPaise) {
                 throw new IllegalArgumentException("Exact split amounts must add up to the expense amount");
             }

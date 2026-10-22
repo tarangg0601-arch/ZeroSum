@@ -10,7 +10,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import GroupCard from '../../components/common/GroupCard'
-import { createGroup, getGroups } from '../../api/groupsApi'
+import { createGroup, getGroups, joinGroup } from '../../api/groupsApi'
+import { apiRequest } from '../../api/client.js'
 
 function Groups() {
   const navigate = useNavigate()
@@ -22,6 +23,27 @@ function Groups() {
   const [groupType, setGroupType] = useState('general')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
+  const [joinCode, setJoinCode] = useState('')
+  const [joinMessage, setJoinMessage] = useState('')
+  const [joinError, setJoinError] = useState('')
+  const [joining, setJoining] = useState(false)
+
+  async function handleJoin(event) {
+    event.preventDefault()
+    setJoining(true)
+    setJoinError('')
+    setJoinMessage('')
+    try {
+      const group = await joinGroup(joinCode)
+      setJoinMessage(`Joined ${group.name}.`)
+      setJoinCode('')
+      navigate(`/groups/${group.id}`)
+    } catch (err) {
+      setJoinError(err.message || 'Could not join that group.')
+    } finally {
+      setJoining(false)
+    }
+  }
 
   async function handleCreate(event) {
     event.preventDefault()
@@ -43,19 +65,15 @@ function Groups() {
         setLoading(true)
         setError('')
 
-        const data = await getGroups()
+        const [data, currentUser] = await Promise.all([getGroups(), apiRequest('/users/me')])
         const withBalances = await Promise.all(data.map(async group => {
-          const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/groups/${group.id}/balances`)
-          if (!response.ok) throw new Error('Failed to load group balances')
-          const balances = await response.json()
-          const currentUserId = Number(sessionStorage.getItem('zerosum_user_id'))
-          const creatorBalance = balances.find(balance => balance.userId === currentUserId)?.balancePaise || 0
+          const balances = await apiRequest(`/groups/${group.id}/balances`)
+          const creatorBalance = balances.find(balance => balance.userId === currentUser.id)?.balancePaise || 0
           return { ...group, creatorBalance, hasOpenBalances: balances.some(balance => balance.balancePaise !== 0) }
         }))
         setGroups(withBalances)
       } catch (err) {
-        console.error(err)
-        setError('Unable to load groups.')
+        setError(err.message || 'Unable to load groups.')
       } finally {
         setLoading(false)
       }
@@ -90,6 +108,13 @@ function Groups() {
         </button>
 
       </section>
+
+      <form onSubmit={handleJoin} className="mb-6 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-end">
+        <label className="flex-1 text-sm font-medium text-slate-700">Join with a group code<input aria-label="Group join code" required maxLength={20} value={joinCode} onChange={event => setJoinCode(event.target.value.toUpperCase())} autoCapitalize="characters" className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 font-mono uppercase" placeholder="Enter code" /></label>
+        <button disabled={joining} className="rounded-lg border border-emerald-200 px-4 py-2 text-sm font-semibold text-emerald-700 disabled:opacity-50">{joining ? 'Joining…' : 'Join group'}</button>
+        {joinError && <p role="alert" className="text-sm text-rose-600">{joinError}</p>}
+        {joinMessage && <p role="status" className="text-sm text-emerald-700">{joinMessage}</p>}
+      </form>
 
       {/* Summary */}
       <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">

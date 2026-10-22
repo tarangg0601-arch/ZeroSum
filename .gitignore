@@ -1,1 +1,13 @@
 .maven/
+.env
+.env.*
+!.env.example
+!**/.env.example
+**/node_modules/
+**/target/
+**/dist/
+**/.npm-cache/
+**/.m2/
+*.log
+.DS_Store
+Thumbs.db

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-
-const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`
+import { apiRequest } from '../../api/client.js'
 
 export default function AuthAction() {
   const { pathname, hash, search } = useLocation()
@@ -26,11 +25,9 @@ export default function AuthAction() {
     event.preventDefault(); setBusy(true); setError(''); setMessage('')
     const body = verify ? { token } : forgot || claimRequest ? { email } : { token, password }
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/${endpoint}`, {
+      const result = await apiRequest(`/auth/${endpoint}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.detail || result.message || 'Unable to complete this request.')
       setMessage(result.message || 'Request completed.')
     } catch (requestError) { setError(requestError.message) }
     finally { setBusy(false) }

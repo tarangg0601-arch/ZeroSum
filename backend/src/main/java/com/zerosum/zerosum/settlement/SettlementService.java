@@ -131,6 +131,8 @@ public class SettlementService {
             throw new IllegalArgumentException("You must be a participant in the recorded payment");
         }
         if (request.fromUserId().equals(request.toUserId())) throw new IllegalArgumentException("A payment must be between two different members");
+        groupRepository.lockById(groupId)
+                .orElseThrow(() -> new ResourceNotFoundException("Group not found"));
         List<BalanceDTO> balances = getBalances(groupId);
         BalanceDTO payerBalance = balances.stream().filter(b -> b.userId().equals(request.fromUserId())).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Payer must be a member of the group"));
