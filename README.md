@@ -1,84 +1,302 @@
-# ZeroSum
+# ZeroSum — Expense Sharing & Settlement Platform
 
-ZeroSum is a React and Spring Boot expense sharing app for groups. It stores money as integer paise, calculates each member's net balance, and uses a deterministic greedy settlement engine to produce a practical payment plan with an explanation.
+ZeroSum is a full-stack expense-sharing application for roommates, hostel groups, friends, and travel companions. It helps groups track shared expenses, calculate who owes whom, and generate a settlement plan that reduces the number of payments required to balance everyone's accounts.
 
-## Current functionality
+The application combines a React frontend, a Spring Boot REST API, and PostgreSQL to manage expenses and settlements in one place.
 
-- Create and manage groups, members, and expenses through the REST API.
-- Register and sign in using a unique, case-insensitive username and password. A successful registration creates an active account and session immediately; email, SMTP, Resend, and verification links are not used.
-- Passwords use Spring Security PBKDF2 hashing. JWTs are signed with `APP_AUTH_TOKEN_SECRET`, expire after 15 minutes, and logout revokes active tokens. Login failures are limited to five per username/address bucket in 15 minutes. User IDs from the browser are never used as identity proof.
-- Forgotten passwords cannot currently be recovered through the UI. There is no unauthenticated password-reset endpoint. Users should keep their password safe.
-- Existing user rows, group memberships, and financial data are retained. V7 adds a nullable username column and a case-insensitive unique index. Legacy rows are deliberately left without usernames; they cannot use the new login until an administrator has separately verified the account holder and assigned a username through an approved migration process. The application never auto-assigns legacy usernames or allows an unverified user to claim financial history.
-- Group and financial routes require a signed bearer token and group membership. Only the group creator can add members or change/delete group settings. IOU and payment actions enforce participant permissions. Group joins use the authenticated JWT identity and rate-limit codes per caller address. Concurrent payments lock the group and recheck balances, so stale duplicate submissions are rejected.
-- Split expenses equally, by exact paise amounts, percentage, or share units. Percentage inputs are integer basis points (`10000` = `100%`); exact inputs are paise. Uneven paise allocations use stable user-ID order.
-- Calculate balances and optimized payments. The heap-based greedy method is deterministic and uses at most `n - 1` transfers; it is not guaranteed to find the globally minimum transfer count in every case.
-- Preview hypothetical payments and expenses without saving them. Manage daily, weekly, monthly, and yearly recurring rules; record direct IOUs; view payment history and date-filtered category insights.
-- Configure the browser API URL and backend CORS origins through environment variables.
+## Features
 
-Payments marked complete represent user-confirmed transfers; the app does not verify bank transactions.
+### Groups and Members
+- Create and manage expense groups.
+- Add members and join groups using invitation codes.
+- View group expenses, members, and balances.
+- Organize expenses for general, hostel, and trip-related groups.
+
+### Expense Management
+- Record shared expenses and select the participants.
+- Split expenses equally, by exact amounts, percentages, or shares.
+- Validate split amounts and handle rounding using integer paise.
+- Manage expenses with appropriate validation and safeguards.
+
+### Settlement Optimization
+- Calculate each member's net balance.
+- Generate payment suggestions using a greedy settlement algorithm.
+- Visualize debt relationships and optimized payments.
+- Preview hypothetical payments and expenses without saving the simulation.
+- Record payments and update outstanding balances.
+- Review settlement and payment history.
+
+The settlement engine uses a deterministic greedy strategy to match members who owe money with members who are owed money. It produces practical settlement suggestions, but it does not guarantee the globally minimum number of transactions for every possible balance configuration.
+
+### Recurring Expenses
+- Configure recurring expense rules.
+- Support daily, weekly, monthly, and yearly schedules where configured.
+- Pause and resume recurring rules.
+- Prevent duplicate occurrences and handle month-end scheduling.
+
+### Financial Tracking
+- Track direct IOUs between members.
+- Record when an IOU is settled.
+- Review payment history and outstanding balances.
+- View category-based spending insights.
+- Simulate hypothetical changes without modifying actual financial records.
+
+### Authentication and Security
+- Register and log in using a username and password.
+- Authenticate API requests using signed bearer tokens.
+- Enforce group membership and access permissions.
+- Hash passwords and validate sensitive operations.
+- Apply token expiry and login rate limiting.
+
+Password recovery is not currently available through the normal user interface.
+
+## Technology Stack
+
+| Layer | Technologies |
+|---|---|
+| Frontend | React, Vite, Tailwind CSS |
+| Routing | React Router |
+| Backend | Java, Spring Boot |
+| API | REST APIs |
+| Database | PostgreSQL |
+| Database migrations | Flyway |
+| Persistence | Spring Data JPA, Hibernate |
+| Authentication | Password hashing, signed bearer tokens |
+| Backend testing | JUnit, Spring Boot Test, Testcontainers |
+| Frontend testing | Vitest, Node.js tests |
+| Local database | Docker Desktop, PostgreSQL |
+
+## Project Structure
+
+```text
+ZeroSum/
+├── backend/
+│   ├── src/
+│   │   ├── main/
+│   │   │   ├── java/
+│   │   │   └── resources/
+│   │   │       └── db/migration/
+│   │   └── test/
+│   ├── Dockerfile
+│   ├── pom.xml
+│   └── mvnw.cmd
+├── frontend/
+│   ├── src/
+│   │   ├── api/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   └── utils/
+│   ├── package.json
+│   └── .env.example
+├── render.yaml
+├── DEPLOYMENT_SECURITY.md
+└── README.md
+```
 
 ## Requirements
 
-- Java 17 or newer and Maven (or use the included Maven wrapper).
-- Node.js and npm.
-- PostgreSQL for a locally running backend.
-- Docker Desktop for the isolated PostgreSQL Testcontainers integration test.
+- Java 17 or newer
+- Node.js and npm
+- Git
+- Docker Desktop with its container engine running
+- A PostgreSQL database for local development
 
-## Run locally
+The backend includes a Maven wrapper, so a separate Maven installation is normally unnecessary.
 
-1. Create an empty local PostgreSQL database and set `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` for the backend. Flyway applies the schema migrations at startup. For separate migration credentials, set `FLYWAY_DB_USERNAME` and `FLYWAY_DB_PASSWORD`; otherwise Flyway uses the runtime DB credentials. Local Docker PostgreSQL uses `DB_SSLMODE=disable` (the default). Set `APP_AUTH_TOKEN_SECRET` to a random value of at least 32 bytes. Do not point local development at a shared database.
-2. Start the backend from `backend/` with `./mvnw spring-boot:run` (Windows: `mvnw.cmd spring-boot:run`). No email-provider credentials or SMTP service are required. The API listens on port `8080` by default; `PORT` can override it.
-3. Start the frontend from `frontend/` with `npm ci` and `npm run dev`. `VITE_API_BASE_URL` is the backend origin, without `/api`; it defaults to `http://localhost:8080`.
-4. Set `APP_CORS_ALLOWED_ORIGINS` as a comma-separated list of browser origins when hosting the API. The default is `http://localhost:5173`.
+## Getting Started on Windows
 
-## Optional: use a Neon Free PostgreSQL database
+### 1. Clone the repository
 
-The backend uses the same PostgreSQL driver and unchanged Flyway migrations with local Docker PostgreSQL or Neon. To create a separate Neon database without starting a paid trial:
+```cmd
+git clone https://github.com/tarangg0601-arch/ZeroSum.git
+cd ZeroSum
+```
 
-1. Sign in at [Neon](https://console.neon.tech/) and create a project. Select the **Free** plan and a region; do not choose an upgrade or paid trial. Neon currently lists Free as `$0` with no credit card required ([plan details](https://neon.com/pricing)).
-2. In the project, open **Connect**. Select the default branch, database, and role. Turn **Connection pooling** off to copy the direct connection details for this Spring Boot app and Flyway. Keep the host, database name, role, and password private.
-3. In the PowerShell terminal that will run the backend, set the JDBC URL and role. Use the host and database name from Neon; the password is entered at a hidden prompt. `DB_SSLMODE=require` makes pgJDBC require TLS for this connection. Neon itself requires SSL/TLS ([connection instructions](https://neon.com/docs/connect/connect-from-any-app)).
+### 2. Start the local PostgreSQL database
 
-   ```powershell
-   $env:DB_URL = 'jdbc:postgresql://<NEON_HOST>:5432/<NEON_DATABASE>?sslmode=require'
-   $env:DB_USERNAME = '<NEON_ROLE>'
-   $env:DB_PASSWORD = [Net.NetworkCredential]::new('', (Read-Host 'Neon database password' -AsSecureString)).Password
-   $env:DB_SSLMODE = 'require'
-   ```
+Make sure Docker Desktop is running. Create a local development database container:
 
-   Replace the host, database, and role placeholders locally. The JDBC URL itself includes `sslmode=require`, so Flyway also requires TLS on its migration connection. Do not put the password in the URL, source files, screenshots, or chat. Leave `FLYWAY_DB_USERNAME` and `FLYWAY_DB_PASSWORD` unset to let Flyway use the same Neon role, or configure separate Neon migration credentials locally.
-4. Keep `APP_AUTH_TOKEN_SECRET` set in that same terminal, then start the backend as described above. On its first startup, Flyway applies the existing migrations to this new Neon database. The local Docker default remains `jdbc:postgresql://localhost:5432/zerosum` with TLS disabled; omit the Neon variables or set them back to the local values to use Docker again.
+```cmd
+docker run --name zerosum-dev-postgres -e POSTGRES_DB=zerosum -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=local-only-zs-password -p 5432:5432 -v zerosum-postgres-data:/var/lib/postgresql/data -d postgres:16-alpine
+```
 
-On Windows, from Command Prompt in `C:\ZeroSum\backend`, you can instead run `powershell -NoProfile -ExecutionPolicy Bypass -File .\run-neon.ps1`. This local helper prompts for the Neon password without echoing it or saving it, uses the Neon settings above, and starts the backend. If no `APP_AUTH_TOKEN_SECRET` is set, it generates one for this run; log in again after restarting the app. It clears its temporary database environment variables when the backend exits.
+If the container already exists, start it instead:
 
-These instructions only configure the backend. They do not create a Neon project, run migrations, or access the existing Supabase database. Environment variables set this way last only for that PowerShell process and its child processes; set them again in a new terminal. Never commit a credentials file.
+```cmd
+docker start zerosum-dev-postgres
+```
 
-## API overview
+Check the container:
 
-- `GET/POST /api/groups`
-- `POST /api/groups/join`
-- `GET/PUT/DELETE /api/groups/{groupId}`
-- `GET/POST /api/groups/{groupId}/members` (group owner adds an existing account by username)
-- `GET/POST /api/groups/{groupId}/expenses`
-- `GET/PUT/DELETE /api/groups/{groupId}/expenses/{expenseId}`
-- `GET /api/groups/{groupId}/balances` and `GET /api/groups/{groupId}/settlement`
-- `POST /api/groups/{groupId}/settlement/whatif`
-- `POST /api/groups/{groupId}/settlement/payments` and `GET /api/groups/{groupId}/settlement/history`
-- `GET/POST /api/groups/{groupId}/recurring` and `PATCH /api/groups/{groupId}/recurring/{ruleId}`
-- `GET /api/groups/{groupId}/insights?from=YYYY-MM-DD&to=YYYY-MM-DD`
-- `POST /api/ious`, `GET /api/groups/{groupId}/ious`, and `PATCH /api/ious/{iouId}`
-- `GET /api/health`
-- `POST /api/auth/register` and `POST /api/auth/login` accept `username` and `password`; registration also accepts optional `name`. Both return a bearer token. `POST /api/auth/logout` revokes the current session.
-- `GET /api/users/me` returns the authenticated account profile.
+```cmd
+docker ps
+```
 
-Expense create/update requests include `participantIds`; `splitType` is `equal`, `exact`, `percentage`, or `shares`. For non-equal splits, provide `splits: [{"userId": 1, "value": 2500}]`. `value` is paise for exact, basis points for percentage, and integer weight for shares.
+Wait until PostgreSQL accepts connections:
 
-What-if settlement plans are read-only projections; only recorded payments create financial history. The initial schema included an unused `settlement_runs` table, which V6 renames to `settlement_runs_legacy` while preserving its rows and foreign keys. V5 adds recurring schedule anchors and V7 adds usernames without changing legacy user rows.
+```cmd
+docker exec zerosum-dev-postgres pg_isready -U postgres -d zerosum
+```
 
-## Verification
+The local Docker database is separate from any hosted database.
 
-- Backend unit and isolated PostgreSQL tests: from `backend/`, set `$env:DOCKER_HOST='npipe:////./pipe/dockerDesktopLinuxEngine'` on Windows, then run `.\mvnw.cmd test -B -ntp`. The suite starts a disposable `postgres:16-alpine` Testcontainers database; it does not read `DB_URL` or access Supabase.
-- Frontend checks from `frontend/`: `npm ci`, `npm test`, `npm run lint`, `npm run build`, `npm audit --cache .npm-cache`.
-- Run `git diff --check` from the repository root.
+### 3. Configure and start the backend
 
-See [DEPLOYMENT_SECURITY.md](DEPLOYMENT_SECURITY.md) for production security requirements and the legacy-account migration limitation.
+Open a new Command Prompt window:
+
+```cmd
+cd /d C:\ZeroSum\backend
+```
+
+Configure the local database connection:
+
+```cmd
+set "DB_URL=jdbc:postgresql://localhost:5432/zerosum"
+set "DB_USERNAME=postgres"
+set "DB_PASSWORD=local-only-zs-password"
+```
+
+Configure the frontend origin and authentication secret:
+
+```cmd
+set "APP_CORS_ALLOWED_ORIGINS=http://localhost:5173"
+set "APP_AUTH_TOKEN_SECRET=local-development-only-secret-change-this-1234567890"
+```
+
+Start Spring Boot:
+
+```cmd
+mvnw.cmd spring-boot:run
+```
+
+Flyway applies pending database migrations during startup. The backend normally listens on port `8080`.
+
+Keep this terminal open.
+
+The authentication secret above is only an example for local development. Generate a strong, unique secret for each hosted environment and store it securely.
+
+### 4. Install and start the frontend
+
+Open another Command Prompt window:
+
+```cmd
+cd /d C:\ZeroSum\frontend
+npm ci
+```
+
+Set the backend API URL:
+
+```cmd
+set "VITE_API_BASE_URL=http://localhost:8080"
+```
+
+Start the development server:
+
+```cmd
+npm run dev
+```
+
+Open the local website:
+
+**http://localhost:5173**
+
+Keep the backend, frontend, and database running while using the application.
+
+## Configuration
+
+The backend uses environment variables for its database and security configuration.
+
+| Variable | Purpose |
+|---|---|
+| `DB_URL` | PostgreSQL JDBC connection URL |
+| `DB_USERNAME` | Runtime database username |
+| `DB_PASSWORD` | Runtime database password |
+| `FLYWAY_DB_USERNAME` | Optional separate migration username |
+| `FLYWAY_DB_PASSWORD` | Optional separate migration password |
+| `APP_AUTH_TOKEN_SECRET` | Secret used to sign authentication tokens |
+| `APP_CORS_ALLOWED_ORIGINS` | Permitted frontend origins |
+| `PORT` | Backend listening port, normally `8080` |
+| `VITE_API_BASE_URL` | Backend API origin used by the frontend |
+
+Configure environment variables in the terminal or hosting provider's settings. Do not assume Spring Boot automatically reads `.env` files.
+
+Variables prefixed with `VITE_` are exposed to frontend code. Never put database passwords, authentication secrets, or other confidential backend credentials in them.
+
+## Testing
+
+### Backend tests
+
+Run from the backend directory:
+
+```cmd
+cd /d C:\ZeroSum\backend
+mvnw.cmd test -B -ntp
+```
+
+The PostgreSQL integration tests use Testcontainers to run against disposable databases. Docker Desktop must be running for these tests. Integration tests must not target a shared development or production database.
+
+### Frontend tests
+
+```cmd
+cd /d C:\ZeroSum\frontend
+npm test
+```
+
+### Lint
+
+```cmd
+npm run lint
+```
+
+### Production build
+
+```cmd
+npm run build
+```
+
+### Dependency audit
+
+```cmd
+npm audit
+```
+
+Review actual test output and investigate failures or skipped integration tests. A skipped database test should not be treated as a successful database verification.
+
+## Database and Data Safety
+
+- Local development data is stored in PostgreSQL running through Docker.
+- Online data requires a separately configured hosted PostgreSQL database.
+- Flyway manages schema changes through versioned migrations.
+- Integration tests must use disposable databases and test data.
+- Never commit passwords, API keys, authentication secrets, or local environment files.
+- Do not reset or delete a database containing data that must be preserved.
+- Verify backups and restoration procedures before storing important real financial records.
+
+Publishing the source code to GitHub does not publish or migrate the database.
+
+## API Overview
+
+The Spring Boot backend provides REST endpoints for authentication, user profiles, groups, memberships, expenses, balances, settlements, recurring expenses, IOUs, insights, and payment history.
+
+The health endpoint is available at `/api/health`.
+
+Protected financial data must be accessible only to authenticated users who have the required group membership or participant permissions.
+
+## Current Limitations
+
+- Password recovery is not available through the normal user interface.
+- The application records user-confirmed payments; it does not verify bank transfers.
+- The greedy settlement algorithm is deterministic but does not guarantee the globally minimum number of transactions in every case.
+- Public hosting, production database backup and restoration, and live deployment behavior must be verified in their actual environments before the application is considered production-ready.
+
+## Deployment
+
+The frontend and backend can be deployed separately.
+
+The frontend needs `VITE_API_BASE_URL` configured to point to the deployed backend. The backend needs a reachable PostgreSQL database, secure environment variables, correct CORS origins, and a valid authentication signing secret.
+
+Production readiness also requires secure database credentials, HTTPS, access controls, appropriate security headers, monitoring, and verified backup and recovery procedures.
+
+Deployment is not complete until the public website can authenticate users, create groups, record and split expenses, calculate balances, and record payments through the deployed backend and database.
+
+For additional deployment requirements, see [DEPLOYMENT_SECURITY.md](DEPLOYMENT_SECURITY.md).
