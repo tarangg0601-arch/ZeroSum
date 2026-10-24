@@ -6,6 +6,9 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/zerosum}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD}
+    hikari:
+      data-source-properties:
+        sslmode: ${DB_SSLMODE:disable}
 
   flyway:
     user: ${FLYWAY_DB_USERNAME:${DB_USERNAME:postgres}}

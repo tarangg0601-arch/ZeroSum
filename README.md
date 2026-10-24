@@ -26,10 +26,32 @@ Payments marked complete represent user-confirmed transfers; the app does not ve
 
 ## Run locally
 
-1. Create an empty local PostgreSQL database and set `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` for the backend. Flyway applies the schema migrations at startup. For separate migration credentials, set `FLYWAY_DB_USERNAME` and `FLYWAY_DB_PASSWORD`; otherwise Flyway uses the runtime DB credentials. Set `APP_AUTH_TOKEN_SECRET` to a random value of at least 32 bytes. Do not point local development at a shared database.
+1. Create an empty local PostgreSQL database and set `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` for the backend. Flyway applies the schema migrations at startup. For separate migration credentials, set `FLYWAY_DB_USERNAME` and `FLYWAY_DB_PASSWORD`; otherwise Flyway uses the runtime DB credentials. Local Docker PostgreSQL uses `DB_SSLMODE=disable` (the default). Set `APP_AUTH_TOKEN_SECRET` to a random value of at least 32 bytes. Do not point local development at a shared database.
 2. Start the backend from `backend/` with `./mvnw spring-boot:run` (Windows: `mvnw.cmd spring-boot:run`). No email-provider credentials or SMTP service are required. The API listens on port `8080` by default; `PORT` can override it.
 3. Start the frontend from `frontend/` with `npm ci` and `npm run dev`. `VITE_API_BASE_URL` is the backend origin, without `/api`; it defaults to `http://localhost:8080`.
 4. Set `APP_CORS_ALLOWED_ORIGINS` as a comma-separated list of browser origins when hosting the API. The default is `http://localhost:5173`.
+
+## Optional: use a Neon Free PostgreSQL database
+
+The backend uses the same PostgreSQL driver and unchanged Flyway migrations with local Docker PostgreSQL or Neon. To create a separate Neon database without starting a paid trial:
+
+1. Sign in at [Neon](https://console.neon.tech/) and create a project. Select the **Free** plan and a region; do not choose an upgrade or paid trial. Neon currently lists Free as `$0` with no credit card required ([plan details](https://neon.com/pricing)).
+2. In the project, open **Connect**. Select the default branch, database, and role. Turn **Connection pooling** off to copy the direct connection details for this Spring Boot app and Flyway. Keep the host, database name, role, and password private.
+3. In the PowerShell terminal that will run the backend, set the JDBC URL and role. Use the host and database name from Neon; the password is entered at a hidden prompt. `DB_SSLMODE=require` makes pgJDBC require TLS for this connection. Neon itself requires SSL/TLS ([connection instructions](https://neon.com/docs/connect/connect-from-any-app)).
+
+   ```powershell
+   $env:DB_URL = 'jdbc:postgresql://<NEON_HOST>:5432/<NEON_DATABASE>?sslmode=require'
+   $env:DB_USERNAME = '<NEON_ROLE>'
+   $env:DB_PASSWORD = [Net.NetworkCredential]::new('', (Read-Host 'Neon database password' -AsSecureString)).Password
+   $env:DB_SSLMODE = 'require'
+   ```
+
+   Replace the host, database, and role placeholders locally. The JDBC URL itself includes `sslmode=require`, so Flyway also requires TLS on its migration connection. Do not put the password in the URL, source files, screenshots, or chat. Leave `FLYWAY_DB_USERNAME` and `FLYWAY_DB_PASSWORD` unset to let Flyway use the same Neon role, or configure separate Neon migration credentials locally.
+4. Keep `APP_AUTH_TOKEN_SECRET` set in that same terminal, then start the backend as described above. On its first startup, Flyway applies the existing migrations to this new Neon database. The local Docker default remains `jdbc:postgresql://localhost:5432/zerosum` with TLS disabled; omit the Neon variables or set them back to the local values to use Docker again.
+
+On Windows, from Command Prompt in `C:\ZeroSum\backend`, you can instead run `powershell -NoProfile -ExecutionPolicy Bypass -File .\run-neon.ps1`. This local helper prompts for the Neon password without echoing it or saving it, uses the Neon settings above, and starts the backend. If no `APP_AUTH_TOKEN_SECRET` is set, it generates one for this run; log in again after restarting the app. It clears its temporary database environment variables when the backend exits.
+
+These instructions only configure the backend. They do not create a Neon project, run migrations, or access the existing Supabase database. Environment variables set this way last only for that PowerShell process and its child processes; set them again in a new terminal. Never commit a credentials file.
 
 ## API overview
 

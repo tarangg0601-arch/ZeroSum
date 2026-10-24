@@ -33,7 +33,7 @@ No SMTP, Resend, sender address, or public email-link URL configuration is requi
 
 1. **Plan legacy account migration.** Identify the production user count and records, define an identity-verified username assignment process, handle username collisions, notify affected users, and test the process on a database copy. Never automatically derive usernames from legacy email addresses.
 2. **Provision production PostgreSQL.** Use a dedicated managed database, TLS, private networking where available, least-privilege runtime and migration roles, backups/retention, monitoring, and a documented restore drill. Do not use the existing Supabase database unless its owner separately approves that use; these tests did not touch it.
-3. **Set production secrets and origins.** Generate a random `APP_AUTH_TOKEN_SECRET` with at least 32 bytes of entropy. Set `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `FLYWAY_DB_USERNAME`, `FLYWAY_DB_PASSWORD`, exact HTTPS `APP_CORS_ALLOWED_ORIGINS`, frontend `VITE_API_BASE_URL`, and the host's `APP_TRUST_RENDER_CLIENT_IP` only after validating ingress behavior. Store secrets in the hosting secret manager, never in Git.
+3. **Set production secrets and origins.** Generate a random `APP_AUTH_TOKEN_SECRET` with at least 32 bytes of entropy. Set `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `DB_SSLMODE=require` (or stronger certificate verification supported by the Java trust store), `FLYWAY_DB_USERNAME`, `FLYWAY_DB_PASSWORD`, exact HTTPS `APP_CORS_ALLOWED_ORIGINS`, frontend `VITE_API_BASE_URL`, and the host's `APP_TRUST_RENDER_CLIENT_IP` only after validating ingress behavior. Store secrets in the hosting secret manager, never in Git.
 4. **Choose and verify a hosting plan.** `render.yaml` uses a preview/free API plan and template domains. Select a suitable paid API/database plan, set the actual service domains, confirm health checks, and verify CSP `connect-src`, CORS, TLS, and response headers on the deployed app.
 5. **Run CI and release checks.** Confirm GitHub Actions succeeds and protect the release branch with required checks. Test registration, duplicate usernames, login throttling, logout, expired tokens, group authorization, and account isolation against the final production-like configuration.
 6. **Choose an account recovery policy.** Until a safe recovery process is implemented, communicate clearly that lost passwords cannot be reset through the app. Do not add an unauthenticated password change/reset route.
@@ -45,7 +45,7 @@ The hosting choice may require a paid provider account and production database p
 
 | Purpose | Variables |
 |---|---|
-| Runtime PostgreSQL | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` |
+| Runtime PostgreSQL | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `DB_SSLMODE` (`require` for Neon; local Docker defaults to `disable`) |
 | Flyway migration role | `FLYWAY_DB_USERNAME`, `FLYWAY_DB_PASSWORD` |
 | CORS / frontend API | `APP_CORS_ALLOWED_ORIGINS`, frontend `VITE_API_BASE_URL` |
 | Authentication / ingress | `APP_AUTH_TOKEN_SECRET`, `APP_TRUST_RENDER_CLIENT_IP` |
