@@ -162,12 +162,12 @@ public class GroupService {
 
         requireOwner(group, actorId);
 
-        if (request.userId() == null && (request.email() == null || request.email().isBlank())) {
-            throw new IllegalArgumentException("Provide a registered user's ID or email");
+        if (request.userId() == null && (request.username() == null || request.username().isBlank())) {
+            throw new IllegalArgumentException("Provide a registered user's username");
         }
-        User user = (request.email() == null || request.email().isBlank()
-                ? userRepository.findById(request.userId())
-                : userRepository.findByEmailIgnoreCase(request.email().trim()))
+        User user = (request.username() != null && !request.username().isBlank()
+                ? userRepository.findByUsernameIgnoreCase(request.username().trim())
+                : userRepository.findById(request.userId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Registered user not found"));
 
         boolean alreadyMember = groupMemberRepository
@@ -243,7 +243,7 @@ public class GroupService {
         return new GroupMemberResponse(
                 user.getId(),
                 user.getName(),
-                user.getEmail()
+                user.getUsername()
         );
     }
 

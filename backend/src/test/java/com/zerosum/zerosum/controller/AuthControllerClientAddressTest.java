@@ -13,7 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AuthControllerClientAddressTest {
-    private final LoginRequest request = new LoginRequest("person@example.test", "not-logged");
+    private final LoginRequest request = new LoginRequest("person_1", "not-logged");
 
     @Test
     void usesRenderClientIpOnlyWhenRenderProxyTrustIsEnabled() {

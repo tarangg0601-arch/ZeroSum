@@ -15,6 +15,6 @@ public class UserService {
     @Transactional(readOnly = true)
     public GroupMemberResponse get(Long userId) {
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        return new GroupMemberResponse(user.getId(), user.getName(), user.getEmail());
+        return new GroupMemberResponse(user.getId(), user.getName(), user.getUsername());
     }
 }

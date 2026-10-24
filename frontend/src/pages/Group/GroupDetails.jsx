@@ -20,7 +20,7 @@ function GroupDetails() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showInvite, setShowInvite] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteUsername, setInviteUsername] = useState('')
   const [inviteError, setInviteError] = useState('')
   const [inviting, setInviting] = useState(false)
   const [currentUserId, setCurrentUserId] = useState(null)
@@ -78,12 +78,12 @@ function GroupDetails() {
     try {
       await apiRequest(`/groups/${groupId}/members`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail }),
+        body: JSON.stringify({ username: inviteUsername }),
       })
       const [groupData, balanceData] = await Promise.all([apiRequest(`/groups/${groupId}`), apiRequest(`/groups/${groupId}/balances`)] )
       setGroup(groupData)
       setBalances(balanceData)
-      setInviteEmail('')
+      setInviteUsername('')
       setShowInvite(false)
     } catch (err) { setInviteError(err.message) } finally { setInviting(false) }
   }
@@ -601,9 +601,9 @@ function GroupDetails() {
 
       {showInvite && canManageMembers && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setShowInvite(false) }}>
         <form onSubmit={handleInvite} className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
-          <div><h2 className="text-xl font-semibold text-slate-900">Add an existing account</h2><p className="mt-1 text-sm text-slate-500">This adds the registered account directly. No email invitation is sent.</p></div>
+          <div><h2 className="text-xl font-semibold text-slate-900">Add an existing account</h2><p className="mt-1 text-sm text-slate-500">This adds the registered account directly.</p></div>
           {inviteError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{inviteError}</p>}
-          <label className="block text-sm text-slate-600">Registered account email<input required type="email" autoFocus value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2" /></label>
+          <label className="block text-sm text-slate-600">Registered username<input required minLength={3} maxLength={32} pattern="[A-Za-z0-9_]{3,32}" autoFocus autoComplete="username" value={inviteUsername} onChange={event => setInviteUsername(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2" /></label>
           <div className="flex justify-end gap-2"><button type="button" onClick={() => setShowInvite(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600">Cancel</button><button disabled={inviting} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{inviting ? 'Adding…' : 'Add member'}</button></div>
         </form>
       </div>}

@@ -6,7 +6,7 @@ public record GroupMemberResponse(
 
         String name,
 
-        String email
+        String username
 
 ) {
 }

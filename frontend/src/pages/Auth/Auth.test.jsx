@@ -2,70 +2,61 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import Auth from './Auth.jsx'
-import AuthAction from './AuthAction.jsx'
 
-describe('account authentication journey', () => {
+function CurrentPath() {
+  return <output aria-label="current path">{useLocation().pathname}</output>
+}
+
+describe('username and password authentication', () => {
   afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals() })
 
-  it('registers without creating a session before email verification', async () => {
+  it('registers with a username and password, then starts an authenticated session without email', async () => {
     const user = userEvent.setup()
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ message: 'Check your email' }, { status: 202 })))
-    render(<MemoryRouter><Auth /></MemoryRouter>)
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ userId: 8, username: 'mira', token: 'signed-token' }, { status: 201 })))
+    render(<MemoryRouter initialEntries={['/login']}><Auth /><CurrentPath /></MemoryRouter>)
     await user.click(screen.getByRole('button', { name: /new to zerosum/i }))
-    await user.type(screen.getByLabelText('Name'), 'Mira')
-    await user.type(screen.getByLabelText('Email'), 'mira@example.test')
-    await user.type(screen.getByLabelText(/Password/), 'a-long-password-123')
+    await user.type(screen.getByLabelText('Display name (optional)'), 'Mira')
+    await user.type(screen.getByLabelText(/^Username/), 'Mira_1')
+    await user.type(screen.getByLabelText(/^Password/), 'a-long-password-123')
     await user.click(screen.getByRole('button', { name: 'Create account' }))
 
-    expect((await screen.findByRole('status')).textContent).toContain('Check your email')
-    expect(sessionStorage.getItem('zerosum_token')).toBeNull()
-    expect(sessionStorage.getItem('zerosum_user_id')).toBeNull()
-    expect(fetch.mock.calls[0][0]).toContain('/auth/register')
-    const sent = JSON.parse(fetch.mock.calls[0][1].body)
-    expect(sent.password).toBe('a-long-password-123')
-    expect(sent.email).toBe('mira@example.test')
-  })
-
-  it('stores a bearer token in session storage only after successful sign-in', async () => {
-    const user = userEvent.setup()
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ userId: 8, token: 'signed-token' }, { status: 200 })))
-    render(<MemoryRouter><Auth /></MemoryRouter>)
-    await user.type(screen.getByLabelText('Email'), 'mira@example.test')
-    await user.type(screen.getByLabelText(/Password/), 'a-long-password-123')
-    await user.click(screen.getByRole('button', { name: 'Sign in' }))
     await waitFor(() => expect(sessionStorage.getItem('zerosum_token')).toBe('signed-token'))
+    expect(screen.getByLabelText('current path').textContent).toBe('/groups')
+    expect(fetch.mock.calls[0][0]).toContain('/auth/register')
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ username: 'Mira_1', password: 'a-long-password-123', name: 'Mira' })
+    expect(screen.queryByLabelText(/email/i)).toBeNull()
+  })
+
+  it('logs in using username and password and stores no client-supplied identity', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ userId: 8, username: 'mira', token: 'signed-token' })))
+    render(<MemoryRouter><Auth /><CurrentPath /></MemoryRouter>)
+    await user.type(screen.getByLabelText(/^Username/), 'MIRA')
+    await user.type(screen.getByLabelText('Password'), 'correct-password')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    await waitFor(() => expect(sessionStorage.getItem('zerosum_token')).toBe('signed-token'))
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ username: 'MIRA', password: 'correct-password' })
     expect(sessionStorage.getItem('zerosum_user_id')).toBeNull()
   })
 
-  it('does not store credentials when sign-in is rejected', async () => {
+  it('does not store a token when credentials are rejected', async () => {
     const user = userEvent.setup()
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ detail: 'Invalid email or password' }, { status: 401 })))
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ detail: 'Invalid username or password' }, { status: 401 })))
     render(<MemoryRouter><Auth /></MemoryRouter>)
-    await user.type(screen.getByLabelText('Email'), 'mira@example.test')
-    await user.type(screen.getByLabelText(/Password/), 'wrong-password')
+    await user.type(screen.getByLabelText(/^Username/), 'mira')
+    await user.type(screen.getByLabelText('Password'), 'wrong-password')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
 
-    expect((await screen.findByRole('alert')).textContent).toContain('Invalid email or password')
+    expect((await screen.findByRole('alert')).textContent).toContain('Invalid username or password')
     expect(sessionStorage.getItem('zerosum_token')).toBeNull()
   })
 
-  it('submits the one-time verification token from the URL fragment without storing it', async () => {
-    const user = userEvent.setup()
-    window.history.replaceState({}, '', '/verify-email#token=one-time-value')
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ message: 'Email verified' }, { status: 200 })))
-    render(<MemoryRouter initialEntries={['/verify-email#token=one-time-value']}><AuthAction /></MemoryRouter>)
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
-    expect((await screen.findByRole('status')).textContent).toContain('Email verified')
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ token: 'one-time-value' })
-    expect(window.location.hash).toBe('')
-    expect(sessionStorage.getItem('zerosum_token')).toBeNull()
-  })
-
-  it('does not accept a token in the query string', () => {
-    render(<MemoryRouter initialEntries={['/verify-email?token=must-not-be-used']}><AuthAction /></MemoryRouter>)
-    expect(screen.getByRole('button', { name: 'Continue' }).disabled).toBe(true)
-    expect(screen.getByRole('alert').textContent).toContain('missing its one-time token')
+  it('does not offer email-based verification or password recovery', async () => {
+    render(<MemoryRouter><Auth /></MemoryRouter>)
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.getByText(/Forgotten passwords cannot currently be recovered/)).toBeTruthy()
   })
 })

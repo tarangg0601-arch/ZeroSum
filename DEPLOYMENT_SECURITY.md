@@ -1,80 +1,45 @@
 # Production release readiness
 
-**Status: not ready for public production.** No deployment was made. This page separates behavior verified from source and isolated local tests from external services and hosting settings that still need owner configuration and verification.
+**Status: not ready for public production.** This change removes email as an authentication dependency. No deployment or remote CI run has been performed.
 
-## Verified in the repository
+## Authentication implementation
 
-- Registration does not issue a session until email ownership is verified. Verification links expire after 24 hours; password-reset and legacy-claim links expire after 30 minutes. Tokens use 32 random bytes, only SHA-256 hashes are stored, and a database update makes each token single-use. Links put the token in the URL fragment, and the frontend removes the fragment from browser history after reading it.
-- Email delivery is selectable with `EMAIL_PROVIDER=smtp` (default) or `EMAIL_PROVIDER=resend`. SMTP requires STARTTLS, checks TLS server identity, and uses finite connection/read/write timeouts. Resend uses HTTPS `POST /emails` with a bearer API key. Provider failures are wrapped without returning provider response bodies or keys. Mocked Resend API tests verify the request shape, success, failure secrecy, and missing configuration; no real provider credentials are configured, so delivery has **not** been tested.
-- API bearer tokens expire after 15 minutes. Logout and password reset invalidate prior tokens. Login failures are limited to five per email/IP bucket in a 15-minute window; stored bucket identifiers are hashed. Email requests for registration, password reset, and legacy claims are limited to three per email/IP/action in an hour; those bucket identifiers are also hashed.
-- Email-link URLs require an HTTPS origin; HTTP is accepted only for localhost development. Userinfo, query strings, fragments, and non-root paths are rejected to avoid sending credentials or tokens to an unsafe or unexpected URL.
-- Render's public ingress is configured to use the `CF-Connecting-IP` header only when `APP_TRUST_RENDER_CLIENT_IP=true`; the header value must be a single IP literal. The repository sets this flag in `render.yaml`. Local/default configuration ignores proxy headers and uses the socket address. Render documents Cloudflare at its public edge and describes forwarding the client IP; validate this assumption against the deployed ingress before relying on it. See [Render's client-IP guidance](https://render.com/articles/host-pocketbase-on-render). Never enable this setting behind an ingress that does not overwrite the header.
-- Group routes require a bearer token and group membership; the membership filter canonicalizes encoded paths before checking the parsed group ID. Group join codes are random and lookup is case-insensitive; joins use the JWT user and rate-limit attempts in a separately committed transaction. Group administration requires the creator. IOU and settlement actions enforce participant checks. Concurrent payments serialize on a group row and recalculate balances after locking; a repeated stale payment is rejected. Expense edits/deletes are blocked once payment history exists, and group deletion is blocked while linked IOUs or completed payments remain. `/api/health` is public and returns healthy only after a database query succeeds.
-- CORS uses configured origins, trims comma-separated entries, and does not enable cookie credentials. The checked-in Render origin is a template and must match the actual frontend URL exactly.
-- Hibernate schema changes are disabled; Flyway owns migrations. V5 adds durable group-join throttling and recurring schedule anchors; existing anchors are backfilled from `next_run_date` because earlier clamping can make the original intent unknowable. V6 renames the unused settlement projection table to `settlement_runs_legacy`, preserving existing rows while keeping GET and what-if routes side-effect-free. The app supports separate runtime DB credentials (`DB_USERNAME`/`DB_PASSWORD`) and migration credentials (`FLYWAY_DB_USERNAME`/`FLYWAY_DB_PASSWORD`). The isolated Testcontainers suite verifies migrations and the API journey; it does not connect to Supabase.
-- The Render blueprint describes a Docker API and static frontend, with an HTTP database health check, a Resend provider selection, static CSP/security headers, and secret environment variables marked `sync: false`. It does not create a PostgreSQL database. The API is still set to Render's `free` plan, which is a preview configuration, not a production plan. Static headers are source-configured but have not been observed on a deployed site.
-- Stale email-throttle rows are cleaned during requests. This is per bucket and database-backed, but it is not a general volumetric abuse or bot defense; provider-side limits and edge/WAF controls are still needed.
-- GitHub Actions CI is configured to run Maven tests (including Testcontainers on the hosted Docker runner), frontend tests, lint, production build, and `npm audit`. Workflow execution has not yet been observed on GitHub.
+- Registration and login use a unique username and password. Usernames are trimmed, normalized to lowercase for storage, restricted to 3–32 ASCII letters, digits, and underscores, and protected by a database case-insensitive unique index. The database remains the final arbiter for concurrent duplicate registrations.
+- Display names are optional. Passwords use Spring Security PBKDF2 hashing; plaintext passwords are not returned or logged. Successful registration returns a JWT and creates an active session without sending email.
+- JWTs are signed using `APP_AUTH_TOKEN_SECRET`, include the account subject and auth version, and expire after 15 minutes. Logout increments the auth version and invalidates earlier tokens. Login failures are limited to five per hashed username/client-address bucket in a 15-minute window. Proxy headers affect the bucket only when `APP_TRUST_RENDER_CLIENT_IP=true` and the forwarded value is a valid IP literal.
+- Group and financial endpoints continue to require JWT authentication and group membership. Backend authorization uses the authenticated JWT subject; browser-stored user IDs are not identity evidence. Group membership, payment, IOU, and owner permissions remain enforced server-side.
+- The UI and API no longer include verification, email registration, password reset, or legacy-claim flows. Forgotten passwords cannot currently be recovered through the normal user interface. There is intentionally no unauthenticated reset endpoint. Users must keep passwords safe; account recovery requires a separately designed, identity-verified process.
+
+## Database compatibility and legacy accounts
+
+- V1–V6 are unchanged. Forward-only V7 adds a nullable `users.username`, a format check, and a case-insensitive unique index. It does not update legacy usernames, delete rows, drop columns/tables, or alter group memberships or financial records.
+- Existing rows retain their email fields, password hashes, auth versions, groups, expenses, IOUs, and payment history. Existing email tokens and rate-limit tables are left in place for compatibility but are no longer used by the application. The application no longer maps or reads the old email-token records.
+- Legacy accounts receive no generated username and cannot log in through username/password until identity has been verified and a username assigned through an approved migration process. Do not infer ownership from a supplied email address or user ID. Before applying V7 to a populated production database, define and communicate the identity verification, username assignment, conflict resolution, and recovery process. A bulk automatic email-to-username migration is unsafe and is not implemented.
+- Hibernate schema updates remain disabled; Flyway owns schema changes. Integration tests use only a disposable PostgreSQL Testcontainers instance and do not connect to the configured Supabase database.
+
+## Local configuration
+
+No SMTP, Resend, sender address, or public email-link URL configuration is required. The backend no longer includes the mail starter or email sender code. Local development still requires a PostgreSQL database and `APP_AUTH_TOKEN_SECRET`.
+
+## Verified in repository configuration
+
+- `render.yaml` configures a Docker API, static frontend, health check, CSP/security headers, and environment references for the database, CORS, token signing, and frontend API origin. It does not provision PostgreSQL.
+- The health endpoint checks database connectivity. Hibernate schema changes are disabled. Runtime DB credentials and Flyway migration credentials can be configured separately.
+- CORS uses configured origins and does not enable credentialed cookies. The Render client IP header is trusted only when explicitly enabled.
+- The frontend bearer token remains in `sessionStorage` and is readable by injected script until expiration. CSP and the 15-minute token lifetime reduce exposure but do not eliminate XSS risk. Backend authorization remains authoritative. Review XSS protections and verify actual deployed security headers before production.
+- GitHub Actions is configured to run Maven tests with Docker/Testcontainers, frontend tests, lint, build, and dependency audit. Its hosted run has not been verified.
 
 ## Outstanding requirements before deployment
 
-### 1. Choose and verify real email delivery
+1. **Plan legacy account migration.** Identify the production user count and records, define an identity-verified username assignment process, handle username collisions, notify affected users, and test the process on a database copy. Never automatically derive usernames from legacy email addresses.
+2. **Provision production PostgreSQL.** Use a dedicated managed database, TLS, private networking where available, least-privilege runtime and migration roles, backups/retention, monitoring, and a documented restore drill. Do not use the existing Supabase database unless its owner separately approves that use; these tests did not touch it.
+3. **Set production secrets and origins.** Generate a random `APP_AUTH_TOKEN_SECRET` with at least 32 bytes of entropy. Set `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `FLYWAY_DB_USERNAME`, `FLYWAY_DB_PASSWORD`, exact HTTPS `APP_CORS_ALLOWED_ORIGINS`, frontend `VITE_API_BASE_URL`, and the host's `APP_TRUST_RENDER_CLIENT_IP` only after validating ingress behavior. Store secrets in the hosting secret manager, never in Git.
+4. **Choose and verify a hosting plan.** `render.yaml` uses a preview/free API plan and template domains. Select a suitable paid API/database plan, set the actual service domains, confirm health checks, and verify CSP `connect-src`, CORS, TLS, and response headers on the deployed app.
+5. **Run CI and release checks.** Confirm GitHub Actions succeeds and protect the release branch with required checks. Test registration, duplicate usernames, login throttling, logout, expired tokens, group authorization, and account isolation against the final production-like configuration.
+6. **Choose an account recovery policy.** Until a safe recovery process is implemented, communicate clearly that lost passwords cannot be reset through the app. Do not add an unauthenticated password change/reset route.
+7. **Review session storage and monitoring.** Consider an HttpOnly secure cookie or another XSS-resistant session design, test CSP and script injection mitigations, and configure alerting for API, database, authentication abuse, and backup failures.
 
-No SMTP settings or credentials were present in the environment checked for this task. Do not treat email delivery as working until the owner configures a provider and verifies a real mailbox end to end.
-
-The Render blueprint selects Resend so the API calls an HTTPS provider endpoint instead of relying on outbound SMTP ports. Configure these backend variables in the hosting provider's secret/config store:
-
-- `EMAIL_PROVIDER=resend` and `RESEND_API_KEY` (the API key is secret).
-- `EMAIL_FROM` using a sender address/domain verified with the provider.
-- `APP_PUBLIC_BASE_URL` set to the exact HTTPS frontend origin.
-
-Create a provider account, select a plan within its current pricing/quotas, generate a restricted API key, and verify a sender domain/address. Publish and verify SPF and DKIM for the sending domain, and publish a monitored DMARC policy. Check that the visible From domain aligns with SPF or DKIM and inspect delivered message headers and provider delivery logs. Consult [Resend's email API](https://resend.com/features/email-api), the [Gmail sender guidelines](https://support.google.com/mail/answer/81126), and [Yahoo sender best practices](https://senders.yahooinc.com/best-practices/) for current recipient-side requirements. The adapter uses HTTPS with the Resend API; the default API host is `https://api.resend.com`. `RESEND_API_BASE_URL` exists for controlled tests/alternate compatible endpoints and should remain unset for production.
-
-The adapter and mocked API tests do not establish real delivery. After setting the provider account, API key, and verified sender, use a controlled mailbox to exercise registration → verification → login and forgotten-password → reset → old-token rejection. Confirm inbox/spam delivery, sender authentication, and provider delivery logs. Resend may have account pricing, quotas, or verification requirements that change; check current terms before selecting a plan. The Render free API plan remains unsuitable for production independently of email transport. See [Render free instance limitations](https://render.com/docs/free).
-
-During that live delivery check, also confirm expired and reused links fail, inspect inbox/spam placement and sender authentication, and ensure proxy, application, and provider logs do not contain message bodies, passwords, or raw tokens.
-
-### 2. Provision a dedicated production PostgreSQL database
-
-There is no database resource in `render.yaml`; `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` are manual secret/config entries. Create a dedicated, paid managed PostgreSQL instance in the same region as the API. Do not point it at the user's existing Supabase database or any shared development database.
-
-- Use Render's private/internal database URL and configure `DB_URL` in JDBC form, for example `jdbc:postgresql://<internal-host>:5432/<database>?sslmode=require`. Require TLS; never use an external/public database URL from the API when an internal route is available. See [Render Postgres connection guidance](https://render.com/docs/postgresql-creating-connecting).
-- Create a runtime role for `DB_USERNAME`/`DB_PASSWORD` with only the table and sequence permissions the application needs. Configure a separate migration role in `FLYWAY_DB_USERNAME`/`FLYWAY_DB_PASSWORD` with schema migration rights. Flyway runs at application startup using this migration role. Keep both credentials in the host secret store and rotate them.
-- Confirm backups, retention, monitoring, and recovery objectives with the selected plan. Perform a restore drill against a disposable database before production use. Document how to roll forward or restore if a migration fails.
-- Render free Postgres databases expire after 30 days; use a paid database for production. See [Render free instance limitations](https://render.com/docs/free).
-
-### 3. Complete hosting and edge configuration
-
-- Replace the template `https://zerosum-frontend.onrender.com` and `https://zerosum-api.onrender.com` values in `render.yaml` with the actual service origins if names differ. Set `APP_CORS_ALLOWED_ORIGINS` to the exact HTTPS frontend origin, `VITE_API_BASE_URL` to the API origin, and `APP_PUBLIC_BASE_URL` to the frontend origin. Avoid wildcard origins.
-- Change the API `plan: free` to a paid production plan. Render free web services spin down after inactivity and are documented for preview use. Resend avoids the SMTP egress restriction through HTTPS, but does not remove the production service availability requirement. See [Render free instance limitations](https://render.com/docs/free).
-- Keep `healthCheckPath: /api/health`. It now checks database connectivity. Verify Render reports healthy after the DB is configured; Render uses HTTP health checks to decide whether a service can receive traffic. See [Render health checks](https://render.com/docs/health-checks).
-- `.github/workflows/ci.yml` runs backend Maven tests with Docker available, frontend tests, lint, production build, and npm audit on pushes and pull requests. The workflow has not yet run on GitHub. Require the CI check in branch protection before merging. The Dockerfile skips Maven tests during image build, so a deployment build alone does not prove tests ran.
-- Generate `APP_AUTH_TOKEN_SECRET` using a cryptographically secure generator with at least 32 bytes of entropy. Keep it in the host secret store, never in Git, and define a controlled rotation procedure (rotation invalidates all current sessions).
-- `APP_TRUST_RENDER_CLIENT_IP=true` trusts the Render/Cloudflare `CF-Connecting-IP` value for login throttling and email-request throttling. Verify real ingress behavior before relying on it. Keep it false on local development and do not enable it for a different proxy unless that proxy is known to overwrite the configured client-IP header. App limits bound repeated requests per email/address/action; configure provider/edge bot and volumetric controls because distributed IPs can evade per-address limits.
-- Enable monitoring and alerting for API errors, failed email delivery, database health, authentication abuse, and backup failures. Review request/application logging to ensure credentials and one-time links are never recorded. Add a documented incident and account-recovery process for legacy users without a verifiable mailbox.
-- The frontend bearer token remains in `sessionStorage`, so successful script injection can read it until its 15-minute expiry. User IDs are no longer stored as identity evidence; pages load the current profile from `/api/users/me`, while backend authorization remains authoritative. The Render blueprint now configures CSP (`script-src 'self'`), frame/content/referrer/permissions policies, and HSTS; inline styles remain allowed for current styling. This is defense in depth, not a replacement for XSS prevention. Confirm the actual deployed response headers, make the CSP `connect-src` match the selected API origin, and test the application for CSP breakage before release. When custom front-end/API domains are chosen, update CSP, CORS, `VITE_API_BASE_URL`, and `APP_PUBLIC_BASE_URL` together.
-
-### 4. Release verification
-
-Latest local verification (2026-10-22): backend **44 passed, 0 failed, 0 skipped**, including three Testcontainers PostgreSQL integration tests; Flyway migrations V1–V6 applied successfully to the disposable PostgreSQL 16 container. The API journey verified join-by-code and rate limiting, balances, hypothetical expense non-persistence, and concurrent duplicate payment rejection. Frontend **13 Vitest tests plus 7 Node tests passed**; lint and production build passed; `npm audit` reported **0 vulnerabilities**. The integration tests mock email and do not verify real provider delivery. GitHub Actions has not run on GitHub yet.
-
-Rerun the full checks after the final production configuration is selected:
-
-```powershell
-$env:MAVEN_USER_HOME='C:\ZeroSum\.maven'
-$env:DOCKER_HOST='npipe:////./pipe/dockerDesktopLinuxEngine'
-cd backend
-.\mvnw.cmd "-Dmaven.repo.local=C:\ZeroSum\backend\.m2\repository" test -B -ntp
-cd ..\frontend
-npm test
-npm run lint
-npm run build
-npm audit --cache .npm-cache
-cd ..
-git diff --check
-```
-
-Integration tests use a disposable Testcontainers PostgreSQL instance and mock the email sender. They verify database migrations, account/token behavior, and the group-to-settlement workflow; they do not verify real provider delivery. Never replace the isolated test DB configuration with a production or Supabase URL.
+The hosting choice may require a paid provider account and production database plan. There are no email-provider accounts, sender domains, API keys, SMTP credentials, or email delivery costs required by this authentication design.
 
 ## Configuration reference
 
@@ -82,8 +47,24 @@ Integration tests use a disposable Testcontainers PostgreSQL instance and mock t
 |---|---|
 | Runtime PostgreSQL | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` |
 | Flyway migration role | `FLYWAY_DB_USERNAME`, `FLYWAY_DB_PASSWORD` |
-| Email provider | `EMAIL_PROVIDER` (`smtp` or `resend`), `EMAIL_FROM`; Resend: `RESEND_API_KEY` and optional `RESEND_API_BASE_URL`; SMTP: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_AUTH` |
-| Public origins | `APP_PUBLIC_BASE_URL`, `APP_CORS_ALLOWED_ORIGINS`, frontend `VITE_API_BASE_URL` |
+| CORS / frontend API | `APP_CORS_ALLOWED_ORIGINS`, frontend `VITE_API_BASE_URL` |
 | Authentication / ingress | `APP_AUTH_TOKEN_SECRET`, `APP_TRUST_RENDER_CLIENT_IP` |
 
-The API must not be declared production-ready until real email delivery, dedicated database access and restore, trusted client-IP behavior, final origins/secrets, deployed response headers, and the release review above are verified. A real Render deployment will also require a hosting account and a paid production service/database plan; email requires a provider account and a verified sender, with any applicable provider cost/quotas selected by the owner.
+## Verification commands
+
+```powershell
+$env:MAVEN_USER_HOME='C:\ZeroSum\.maven'
+$env:DOCKER_HOST='npipe:////./pipe/dockerDesktopLinuxEngine'
+cd C:\ZeroSum\backend
+.\mvnw.cmd "-Dmaven.repo.local=C:\ZeroSum\backend\.m2\repository" test -B -ntp
+cd C:\ZeroSum\frontend
+npm ci
+npm test
+npm run lint
+npm run build
+npm audit --cache .npm-cache
+cd C:\ZeroSum
+git diff --check
+```
+
+The PostgreSQL integration suite runs a disposable `postgres:16-alpine` container and verifies Flyway migration plus authentication and group-to-settlement behavior. It does not use production or Supabase credentials.

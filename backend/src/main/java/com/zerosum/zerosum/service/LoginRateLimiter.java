@@ -15,8 +15,8 @@ public class LoginRateLimiter {
 
     public LoginRateLimiter(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
-    public String bucket(String normalizedEmail, String remoteAddress) {
-        String raw = normalizedEmail + "\n" + (remoteAddress == null ? "unknown" : remoteAddress);
+    public String bucket(String normalizedUsername, String remoteAddress) {
+        String raw = normalizedUsername + "\n" + (remoteAddress == null ? "unknown" : remoteAddress);
         try {
             return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }

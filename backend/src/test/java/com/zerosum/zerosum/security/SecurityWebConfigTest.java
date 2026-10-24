@@ -33,9 +33,9 @@ class SecurityWebConfigTest {
     @Test
     void requiresBearerAuthenticationForApiRoutesButAllowsLogin() throws Exception {
         http.perform(get("/api/users/me")).andExpect(status().isUnauthorized());
-        when(authService.login(any(LoginRequest.class), any())).thenReturn(new AuthResponse(1L, "A", "a@example.test", "signed"));
+        when(authService.login(any(LoginRequest.class), any())).thenReturn(new AuthResponse(1L, "A", "account_a", "signed"));
         http.perform(post("/api/auth/login").contentType("application/json")
-                .content("{\"email\":\"a@example.test\",\"password\":\"password\"}"))
+                .content("{\"username\":\"account_a\",\"password\":\"password\"}"))
                 .andExpect(status().isOk());
     }
 }

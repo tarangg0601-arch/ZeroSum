@@ -23,14 +23,6 @@ services:
         sync: false
       - key: APP_TRUST_RENDER_CLIENT_IP
         value: "true"
-      - key: EMAIL_FROM
-        sync: false
-      - key: EMAIL_PROVIDER
-        value: resend
-      - key: RESEND_API_KEY
-        sync: false
-      - key: APP_PUBLIC_BASE_URL
-        value: https://zerosum-frontend.onrender.com
   - type: web
     name: zerosum-frontend
     runtime: static

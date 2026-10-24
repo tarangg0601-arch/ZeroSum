@@ -3,10 +3,6 @@ package com.zerosum.zerosum.controller;
 import com.zerosum.zerosum.dto.AuthResponse;
 import com.zerosum.zerosum.dto.LoginRequest;
 import com.zerosum.zerosum.dto.RegisterRequest;
-import com.zerosum.zerosum.dto.ActionResponse;
-import com.zerosum.zerosum.dto.EmailRequest;
-import com.zerosum.zerosum.dto.TokenRequest;
-import com.zerosum.zerosum.dto.PasswordTokenRequest;
 import com.zerosum.zerosum.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -33,9 +29,9 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    @ResponseStatus(HttpStatus.ACCEPTED)
-    public ActionResponse register(@Valid @RequestBody RegisterRequest request, HttpServletRequest servletRequest) {
-        return auth.register(request, clientAddress(servletRequest));
+    @ResponseStatus(HttpStatus.CREATED)
+    public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
+        return auth.register(request);
     }
 
     @PostMapping("/login")
@@ -50,29 +46,6 @@ public class AuthController {
             if (TrustedClientAddress.isIpLiteral(forwardedIp)) clientIp = forwardedIp.trim();
         }
         return clientIp;
-    }
-
-    @PostMapping("/verify-email")
-    public ActionResponse verifyEmail(@Valid @RequestBody TokenRequest request) { return auth.verifyEmail(request.token()); }
-
-    @PostMapping("/forgot-password")
-    public ActionResponse forgotPassword(@Valid @RequestBody EmailRequest request, HttpServletRequest servletRequest) {
-        return auth.requestPasswordReset(request.email(), clientAddress(servletRequest));
-    }
-
-    @PostMapping("/reset-password")
-    public ActionResponse resetPassword(@Valid @RequestBody PasswordTokenRequest request) {
-        return auth.resetPassword(request.token(), request.password());
-    }
-
-    @PostMapping("/claim-legacy-account")
-    public ActionResponse claimLegacyAccount(@Valid @RequestBody EmailRequest request, HttpServletRequest servletRequest) {
-        return auth.claimLegacyAccount(request.email(), clientAddress(servletRequest));
-    }
-
-    @PostMapping("/complete-legacy-claim")
-    public ActionResponse completeLegacyClaim(@Valid @RequestBody PasswordTokenRequest request) {
-        return auth.completeLegacyClaim(request.token(), request.password());
     }
 
     @PostMapping("/logout")

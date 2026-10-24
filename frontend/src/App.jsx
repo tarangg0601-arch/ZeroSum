@@ -11,7 +11,6 @@ import Recurring from './pages/Recurring/Recurring'
 import Insights from './pages/Insights/Insights'
 import Ious from './pages/Ious/Ious'
 import Auth from './pages/Auth/Auth'
-import AuthAction from './pages/Auth/AuthAction'
 import { useLocation } from 'react-router-dom'
 import Activity from './pages/Activity/Activity'
 import Settings from './pages/Settings/Settings'
@@ -25,12 +24,6 @@ function App() {
       <Routes>
 
         <Route path="/login" element={<Auth />} />
-        <Route path="/verify-email" element={<AuthAction />} />
-        <Route path="/forgot-password" element={<AuthAction />} />
-        <Route path="/reset-password" element={<AuthAction />} />
-        <Route path="/claim-legacy-account" element={<AuthAction />} />
-        <Route path="/claim-account" element={<AuthAction />} />
-
         <Route element={<RequireAuth><MainLayout /></RequireAuth>}>
 
           {/* Dashboard */}

@@ -14,10 +14,16 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -46,25 +52,29 @@ class SettlementApiIntegrationTest {
     @Autowired MockMvc http;
     @Autowired ObjectMapper objectMapper;
     @Autowired JdbcTemplate jdbc;
-    @MockitoBean com.zerosum.zerosum.service.EmailSender emailSender;
+    @Autowired JwtEncoder jwtEncoder;
     private String activeToken;
 
     @Test
     void migratesAndRunsGroupExpenseWhatIfAndPaymentJourney() throws Exception {
-        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(6);
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(7);
         assertThat(jdbc.queryForObject("select to_regclass('settlement_runs') is null and to_regclass('settlement_runs_legacy') is not null", Boolean.class)).isTrue();
         assertThat(jdbc.queryForObject("select to_regclass('auth_email_attempts') is not null", Boolean.class)).isTrue();
         http.perform(get("/api/health")).andExpect(status().isOk());
         http.perform(get("/api/groups")).andExpect(status().isUnauthorized());
-        Long creator = register("Creator", "creator@example.test");
+        Long creator = register("creator_1", "Creator");
         String creatorToken = activeToken;
         activeToken = null;
+        var normalizedLogin = perform(HttpMethod.POST, "/api/auth/login", Map.of("username", "CREATOR_1", "password", "a-long-test-password-123"), 200);
+        assertThat(normalizedLogin.path("username").asText()).isEqualTo("creator_1");
+        creatorToken = normalizedLogin.path("token").asText();
+        perform(HttpMethod.POST, "/api/auth/register", Map.of("username", "Creator_1", "password", "a-long-test-password-123"), 409);
         for (int attempt = 0; attempt < 5; attempt++) {
-            perform(HttpMethod.POST, "/api/auth/login", Map.of("email", "creator@example.test", "password", "incorrect-password"), 401);
+            perform(HttpMethod.POST, "/api/auth/login", Map.of("username", "creator_1", "password", "incorrect-password"), 401);
         }
-        perform(HttpMethod.POST, "/api/auth/login", Map.of("email", "creator@example.test", "password", "incorrect-password"), 429);
+        perform(HttpMethod.POST, "/api/auth/login", Map.of("username", "creator_1", "password", "incorrect-password"), 429);
         activeToken = creatorToken;
-        Long member = register("Member", "member@example.test");
+        Long member = register("member_1", "Member");
         activeToken = creatorToken;
         perform(HttpMethod.POST, "/api/groups", Map.of("name", "Invalid type", "groupType", "unsupported"), 400);
         var createdGroup = perform(HttpMethod.POST, "/api/groups", Map.of("name", "Journey", "groupType", "general"), 201);
@@ -86,7 +96,7 @@ class SettlementApiIntegrationTest {
         perform(HttpMethod.POST, "/api/groups/join", Map.of("joinCode", "not-a-code"), 429);
         assertThat(jdbc.queryForObject("select max(attempt_count) from group_join_attempts", Integer.class)).isEqualTo(11);
         activeToken = memberToken;
-        perform(HttpMethod.POST, "/api/groups/" + group + "/members", Map.of("email", "creator@example.test"), 403);
+        perform(HttpMethod.POST, "/api/groups/" + group + "/members", Map.of("username", "creator_1"), 403);
         perform(HttpMethod.DELETE, "/api/groups/" + group, null, 403);
         activeToken = creatorToken;
         perform(HttpMethod.POST, "/api/groups/" + group + "/expenses", Map.of("description", "Train", "amountPaise", 1000,
@@ -140,43 +150,30 @@ class SettlementApiIntegrationTest {
     }
 
     @Test
-    void claimsLegacyFinancialIdentityOnlyAfterMailboxTokenAndInvalidatesTokenAfterReset() throws Exception {
+    void legacyAccountsRemainUnclaimedAndEmailRecoveryEndpointsAreUnavailable() throws Exception {
         jdbc.update("insert into users(name, email) values (?, ?)", "Legacy", "legacy@example.test");
         Long legacyId = jdbc.queryForObject("select id from users where email = ?", Long.class, "legacy@example.test");
         jdbc.update("insert into groups(name, group_type, join_code, created_by) values (?, ?, ?, ?)", "Legacy ledger", "general", "LEGACY01", legacyId);
         Long groupId = jdbc.queryForObject("select id from groups where join_code = ?", Long.class, "LEGACY01");
         jdbc.update("insert into group_members(group_id, user_id) values (?, ?)", groupId, legacyId);
 
-        perform(HttpMethod.POST, "/api/auth/claim-legacy-account", Map.of("email", "legacy@example.test"), 200);
-        String claimToken = emailedToken("legacy@example.test", "Secure your existing ZeroSum account");
-        perform(HttpMethod.POST, "/api/auth/complete-legacy-claim", Map.of("token", claimToken, "password", "new-legacy-password-123"), 200);
-        perform(HttpMethod.POST, "/api/auth/complete-legacy-claim", Map.of("token", claimToken, "password", "another-password-123"), 400);
+        activeToken = null;
+        perform(HttpMethod.POST, "/api/auth/login", Map.of("username", "legacy_user", "password", "anything-at-all"), 401);
+        perform(HttpMethod.POST, "/api/auth/forgot-password", Map.of("email", "legacy@example.test"), 401);
+        assertThat(jdbc.queryForObject("select username from users where id = ?", String.class, legacyId)).isNull();
         assertThat(jdbc.queryForObject("select id from users where email = ?", Long.class, "legacy@example.test")).isEqualTo(legacyId);
         assertThat(jdbc.queryForObject("select count(*) from group_members where group_id = ? and user_id = ?", Integer.class, groupId, legacyId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from groups where id = ?", Integer.class, groupId)).isEqualTo(1);
 
-        activeToken = null;
-        var login = perform(HttpMethod.POST, "/api/auth/login", Map.of("email", "legacy@example.test", "password", "new-legacy-password-123"), 200);
-        activeToken = login.get("token").asText();
-        perform(HttpMethod.POST, "/api/auth/forgot-password", Map.of("email", "legacy@example.test"), 200);
-        String resetToken = emailedToken("legacy@example.test", "Reset your ZeroSum password");
-        String oldJwt = activeToken;
-        perform(HttpMethod.POST, "/api/auth/reset-password", Map.of("token", resetToken, "password", "reset-password-123"), 200);
-        activeToken = null;
-        http.perform(get("/api/groups").header("Authorization", "Bearer " + oldJwt)).andExpect(status().isUnauthorized());
-        var newLogin = perform(HttpMethod.POST, "/api/auth/login", Map.of("email", "legacy@example.test", "password", "reset-password-123"), 200);
-        assertThat(newLogin.get("userId").asLong()).isEqualTo(legacyId);
     }
 
     @Test
-    void expiredEmailVerificationTokenCannotVerifyAnAccount() throws Exception {
-        perform(HttpMethod.POST, "/api/auth/register", Map.of("name", "Expired", "email", "expired@example.test",
-                "password", "a-long-test-password-123"), 202);
-        String token = emailedToken("expired@example.test", "Verify your ZeroSum email");
-        jdbc.update("update auth_tokens set expires_at = current_timestamp - interval '1 minute' where user_id = "
-                + "(select id from users where email = ?) and purpose = 'EMAIL_VERIFICATION'", "expired@example.test");
-        perform(HttpMethod.POST, "/api/auth/verify-email", Map.of("token", token), 400);
-        assertThat(jdbc.queryForObject("select email_verified from users where email = ?", Boolean.class, "expired@example.test"))
-                .isFalse();
+    void rejectsExpiredJwt() throws Exception {
+        Instant expiredAt = Instant.now().minusSeconds(60);
+        String expired = jwtEncoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(),
+                JwtClaimsSet.builder().issuer("zerosum").subject("999999").issuedAt(expiredAt.minusSeconds(60))
+                        .expiresAt(expiredAt).claim("ver", 0).build())).getTokenValue();
+        http.perform(get("/api/groups").header("Authorization", "Bearer " + expired)).andExpect(status().isUnauthorized());
     }
 
     private Long post(String path, Map<String, ?> body, String idKey) {
@@ -186,23 +183,16 @@ class SettlementApiIntegrationTest {
 
     private String memberToken;
 
-    private Long register(String name, String email) throws Exception {
-        perform(HttpMethod.POST, "/api/auth/register", Map.of("name", name, "email", email, "password", "a-long-test-password-123"), 202);
-        String verification = emailedToken(email, "Verify your ZeroSum email");
-        perform(HttpMethod.POST, "/api/auth/verify-email", Map.of("token", verification), 200);
-        Long userId = jdbc.queryForObject("select id from users where email = ?", Long.class, email);
-        var login = perform(HttpMethod.POST, "/api/auth/login", Map.of("email", email, "password", "a-long-test-password-123"), 200);
+    private Long register(String username, String name) {
+        var registration = perform(HttpMethod.POST, "/api/auth/register", Map.of("username", username, "name", name,
+                "password", "a-long-test-password-123"), 201);
+        Long userId = registration.path("userId").asLong();
+        assertThat(registration.path("username").asText()).isEqualTo(username);
+        assertThat(jdbc.queryForObject("select email from users where id = ?", String.class, userId)).isNull();
+        var login = perform(HttpMethod.POST, "/api/auth/login", Map.of("username", username, "password", "a-long-test-password-123"), 200);
         activeToken = login.get("token").asText();
         if (name.equals("Member")) memberToken = activeToken;
         return userId;
-    }
-
-    private String emailedToken(String recipient, String subject) throws Exception {
-        var bodies = org.mockito.ArgumentCaptor.forClass(String.class);
-        org.mockito.Mockito.verify(emailSender, org.mockito.Mockito.atLeastOnce()).send(org.mockito.ArgumentMatchers.eq(recipient),
-                org.mockito.ArgumentMatchers.eq(subject), bodies.capture());
-        String body = bodies.getValue();
-        return body.substring(body.indexOf("#token=") + 7).split("\\s", 2)[0];
     }
 
     private tools.jackson.databind.JsonNode perform(HttpMethod method, String path, Map<String, ?> body, int statusCode) {
